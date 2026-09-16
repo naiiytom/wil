@@ -1,0 +1,9 @@
+[package]
+name = "world-in-layers"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+resvg = "0.48"
+serde = { version = "1", features = ["derive"] }
+yaml_serde = "0.10"
