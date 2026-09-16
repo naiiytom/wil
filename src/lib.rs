@@ -39,6 +39,8 @@ struct Layer {
     stroke: String,
     #[serde(default)]
     stroke_width: f32,
+    #[serde(default)]
+    lift: f32,
     points: Vec<[f32; 2]>,
     #[serde(default)]
     sources: Vec<String>,
@@ -74,7 +76,9 @@ pub fn render_source_pack(pack: impl AsRef<Path>, output: impl AsRef<Path>) -> R
     validate(&scene, &sources)?;
 
     let svg = compose_svg(&scene);
-    let tree = resvg::usvg::Tree::from_str(&svg, &resvg::usvg::Options::default())?;
+    let mut options = resvg::usvg::Options::default();
+    options.fontdb_mut().load_system_fonts();
+    let tree = resvg::usvg::Tree::from_str(&svg, &options)?;
     let mut pixmap = resvg::tiny_skia::Pixmap::new(scene.canvas.width, scene.canvas.height)
         .ok_or("invalid canvas size")?;
     resvg::render(
@@ -143,7 +147,7 @@ fn validate_references(
 
 fn compose_svg(scene: &Scene) -> String {
     let mut svg = format!(
-        r#"<svg xmlns="http://www.w3.org/2000/svg" width="{}" height="{}" viewBox="0 0 {} {}"><rect width="100%" height="100%" fill="{}"/>"#,
+        r##"<svg xmlns="http://www.w3.org/2000/svg" width="{}" height="{}" viewBox="0 0 {} {}"><defs><pattern id="paper-grain" width="14" height="14" patternUnits="userSpaceOnUse"><path d="M0 2L14 0M0 10L14 8" stroke="#ffffff" stroke-opacity="0.18" stroke-width="1"/></pattern></defs><rect width="100%" height="100%" fill="{}"/><rect width="100%" height="100%" fill="url(#paper-grain)"/>"##,
         scene.canvas.width,
         scene.canvas.height,
         scene.canvas.width,
@@ -163,13 +167,33 @@ fn compose_svg(scene: &Scene) -> String {
             &layer.fill
         };
         let stroke = if layer.stroke.is_empty() {
-            "none"
+            "#f5eedb"
         } else {
             &layer.stroke
         };
+        let stroke_width = if layer.stroke_width == 0.0 {
+            5.0
+        } else {
+            layer.stroke_width
+        };
+        let lift = layer.lift.max(0.0);
         match layer.kind.as_str() {
-            "polygon" => svg.push_str(&format!(r#"<polygon id="{}" points="{}" fill="{}" stroke="{}" stroke-width="{}"/>"#, escape(&layer.id), points, fill, stroke, layer.stroke_width)),
-            "line" => svg.push_str(&format!(r#"<polyline id="{}" points="{}" fill="none" stroke="{}" stroke-width="{}" stroke-linecap="round" stroke-linejoin="round"/>"#, escape(&layer.id), points, stroke, layer.stroke_width)),
+            "polygon" => {
+                if lift > 0.0 {
+                    svg.push_str(&format!(r##"<polygon points="{}" fill="#514d42" fill-opacity="0.34" transform="translate(0 {})"/>"##, points, lift));
+                }
+                svg.push_str(&format!(r#"<polygon id="{}" points="{}" fill="{}" stroke="{}" stroke-width="{}" stroke-linejoin="round"/>"#, escape(&layer.id), points, fill, stroke, stroke_width));
+                svg.push_str(&format!(
+                    r#"<polygon points="{}" fill="url(#paper-grain)" fill-opacity="0.36"/>"#,
+                    points
+                ));
+            }
+            "line" => {
+                if lift > 0.0 {
+                    svg.push_str(&format!(r##"<polyline points="{}" fill="none" stroke="#514d42" stroke-opacity="0.34" stroke-width="{}" stroke-linecap="round" stroke-linejoin="round" transform="translate(0 {})"/>"##, points, stroke_width, lift));
+                }
+                svg.push_str(&format!(r#"<polyline id="{}" points="{}" fill="none" stroke="{}" stroke-width="{}" stroke-linecap="round" stroke-linejoin="round"/>"#, escape(&layer.id), points, stroke, stroke_width));
+            }
             _ => {}
         }
     }

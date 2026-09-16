@@ -1,0 +1,97 @@
+title: Bangkok's Flat Delta
+canvas:
+  width: 3840
+  height: 2160
+background: "#ece7d9"
+layers:
+  - id: gulf-of-thailand
+    kind: polygon
+    fill: "#8daeb2"
+    points: [[0, 1740], [900, 1660], [2100, 1720], [3840, 1600], [3840, 2160], [0, 2160]]
+    sources: [osm-water]
+  - id: chao-phraya-basin
+    kind: polygon
+    fill: "#ded4ac"
+    lift: 18
+    points: [[0, 0], [3840, 0], [3840, 1600], [2100, 1720], [900, 1660], [0, 1740]]
+    sources: [srtm-elevation]
+  - id: delta-contour
+    kind: polygon
+    fill: "#cfc28f"
+    lift: 34
+    points: [[420, 240], [3300, 260], [3520, 1190], [2960, 1500], [1880, 1580], [760, 1430], [250, 980]]
+    sources: [srtm-elevation]
+  - id: chao-phraya-river
+    kind: line
+    stroke: "#5f8992"
+    stroke_width: 150
+    lift: 56
+    points: [[330, 0], [820, 360], [1180, 720], [1500, 1080], [1800, 1450], [2100, 1720]]
+    sources: [osm-water]
+  - id: canal-network
+    kind: line
+    stroke: "#83a4a6"
+    stroke_width: 34
+    lift: 68
+    points: [[1090, 830], [1500, 970], [2050, 940], [2600, 1110], [3110, 1010]]
+    sources: [osm-water]
+  - id: urban-foundation
+    kind: polygon
+    fill: "#aaa89e"
+    lift: 78
+    points: [[1320, 760], [2290, 760], [2630, 1080], [2390, 1390], [1610, 1360], [1230, 1110]]
+    sources: [osm-urban]
+  - id: city-block-1
+    kind: polygon
+    fill: "#d4d0c4"
+    lift: 102
+    points: [[1480, 860], [1710, 860], [1710, 1030], [1480, 1030]]
+    sources: [osm-urban]
+  - id: city-block-2
+    kind: polygon
+    fill: "#c2bfb5"
+    lift: 116
+    points: [[1780, 840], [2030, 840], [2030, 1060], [1780, 1060]]
+    sources: [osm-urban]
+  - id: city-block-3
+    kind: polygon
+    fill: "#d9d5ca"
+    lift: 96
+    points: [[2100, 900], [2340, 900], [2340, 1080], [2100, 1080]]
+    sources: [osm-urban]
+  - id: city-block-4
+    kind: polygon
+    fill: "#bebbb0"
+    lift: 110
+    points: [[1590, 1110], [1830, 1110], [1830, 1260], [1590, 1260]]
+    sources: [osm-urban]
+  - id: city-block-5
+    kind: polygon
+    fill: "#d2cdc0"
+    lift: 124
+    points: [[1900, 1130], [2160, 1130], [2160, 1280], [1900, 1280]]
+    sources: [osm-urban]
+  - id: floodplain-edge
+    kind: line
+    stroke: "#bc7352"
+    stroke_width: 28
+    lift: 88
+    points: [[400, 1390], [940, 1510], [1500, 1570], [2080, 1530], [2730, 1450], [3300, 1510]]
+    sources: [srtm-elevation]
+labels:
+  - text: CHAO PHRAYA RIVER
+    x: 470
+    y: 500
+    sources: [osm-water]
+  - text: BANGKOK
+    x: 1700
+    y: 1080
+    sources: [osm-urban]
+  - text: GULF OF THAILAND
+    x: 2420
+    y: 1910
+    sources: [osm-water]
+  - text: LOW-LYING DELTA
+    x: 2500
+    y: 1510
+    sources: [srtm-elevation]

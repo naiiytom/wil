@@ -1,0 +1,16 @@
+sources:
+  - id: osm-water
+    title: OpenStreetMap waterway and coastline data
+    url: https://www.openstreetmap.org/copyright
+    license: ODbL-1.0 (© OpenStreetMap contributors)
+    retrieved: 2026-09-16
+  - id: osm-urban
+    title: OpenStreetMap urban-area context
+    url: https://www.openstreetmap.org/copyright
+    license: ODbL-1.0 (© OpenStreetMap contributors)
+    retrieved: 2026-09-16
+  - id: srtm-elevation
+    title: NASA Shuttle Radar Topography Mission elevation data
+    url: https://www.earthdata.nasa.gov/centers/lp-daac
+    license: U.S. Government work (public domain)
+    retrieved: 2026-09-16

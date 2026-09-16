@@ -1,5 +1,6 @@
 use std::{
     fs,
+    io::BufReader,
     path::PathBuf,
     process::Command,
     time::{SystemTime, UNIX_EPOCH},
@@ -91,6 +92,71 @@ fn defaults_a_scene_render_to_4k() {
 
     let png = fs::read(&output).unwrap();
     assert_eq!(&png[16..24], &[0, 0, 15, 0, 0, 0, 8, 112]);
+    fs::remove_dir_all(pack).unwrap();
+}
+
+#[test]
+fn rasterizes_scene_labels() {
+    let pack = temporary_pack();
+    write_source_pack(&pack, "[basin]");
+    let output = pack.join("render.png");
+
+    render_source_pack(&pack, &output).unwrap();
+
+    let decoder = png::Decoder::new(BufReader::new(fs::File::open(&output).unwrap()));
+    let mut reader = decoder.read_info().unwrap();
+    let mut pixels = vec![0; reader.output_buffer_size().unwrap()];
+    let info = reader.next_frame(&mut pixels).unwrap();
+    assert!(
+        pixels[..info.buffer_size()]
+            .chunks_exact(4)
+            .any(|pixel| pixel[0] < 50 && pixel[1] < 50 && pixel[2] < 50)
+    );
+    fs::remove_dir_all(pack).unwrap();
+}
+
+#[test]
+fn casts_a_shadow_for_a_lifted_paper_layer() {
+    let pack = temporary_pack();
+    fs::write(
+        pack.join("scene.yaml"),
+        r##"
+canvas:
+  width: 120
+  height: 80
+background: "#ffffff"
+layers:
+  - id: paper-layer
+    kind: polygon
+    fill: "#d3c797"
+    lift: 12
+    points: [[20, 20], [100, 20], [100, 50], [20, 50]]
+    sources: [basin]
+"##,
+    )
+    .unwrap();
+    fs::write(
+        pack.join("sources.yaml"),
+        r#"
+sources:
+  - id: basin
+    title: Test source
+    url: https://example.com/source
+    license: CC0-1.0
+    retrieved: 2026-09-16
+"#,
+    )
+    .unwrap();
+    let output = pack.join("render.png");
+
+    render_source_pack(&pack, &output).unwrap();
+
+    let decoder = png::Decoder::new(BufReader::new(fs::File::open(&output).unwrap()));
+    let mut reader = decoder.read_info().unwrap();
+    let mut pixels = vec![0; reader.output_buffer_size().unwrap()];
+    reader.next_frame(&mut pixels).unwrap();
+    let shadow = &pixels[(56 * 120 + 60) * 4..(56 * 120 + 61) * 4];
+    assert!(shadow[0] < 230 && shadow[1] < 230 && shadow[2] < 230);
     fs::remove_dir_all(pack).unwrap();
 }
 
