@@ -8,6 +8,8 @@ pub type RenderResult<T> = Result<T, Box<dyn Error>>;
 struct Scene {
     #[serde(default)]
     canvas: Canvas,
+    #[serde(default)]
+    bounds: Option<[f64; 4]>,
     background: String,
     layers: Vec<Layer>,
     #[serde(default)]
@@ -41,6 +43,8 @@ struct Layer {
     stroke_width: f32,
     #[serde(default)]
     lift: f32,
+    #[serde(default)]
+    geojson: Option<String>,
     points: Vec<[f32; 2]>,
     #[serde(default)]
     sources: Vec<String>,
@@ -69,10 +73,19 @@ struct SourceReference {
     retrieved: String,
 }
 
+#[derive(Deserialize)]
+#[serde(tag = "type")]
+enum GeoJson {
+    Feature { geometry: Box<GeoJson> },
+    LineString { coordinates: Vec<[f64; 2]> },
+    Polygon { coordinates: Vec<Vec<[f64; 2]>> },
+}
+
 pub fn render_source_pack(pack: impl AsRef<Path>, output: impl AsRef<Path>) -> RenderResult<()> {
     let pack = pack.as_ref();
-    let scene: Scene = yaml_serde::from_str(&fs::read_to_string(pack.join("scene.yaml"))?)?;
+    let mut scene: Scene = yaml_serde::from_str(&fs::read_to_string(pack.join("scene.yaml"))?)?;
     let sources: Sources = yaml_serde::from_str(&fs::read_to_string(pack.join("sources.yaml"))?)?;
+    resolve_geojson(&mut scene, pack)?;
     validate(&scene, &sources)?;
 
     let svg = compose_svg(&scene);
@@ -88,6 +101,52 @@ pub fn render_source_pack(pack: impl AsRef<Path>, output: impl AsRef<Path>) -> R
     );
     pixmap.save_png(output)?;
     Ok(())
+}
+
+fn resolve_geojson(scene: &mut Scene, pack: &Path) -> RenderResult<()> {
+    let Some([west, south, east, north]) = scene.bounds else {
+        if scene.layers.iter().any(|layer| layer.geojson.is_some()) {
+            return Err("Scene bounds are required for GeoJSON layers".into());
+        }
+        return Ok(());
+    };
+    if east <= west || north <= south {
+        return Err("Scene bounds must be west, south, east, north".into());
+    }
+    for layer in &mut scene.layers {
+        let Some(path) = &layer.geojson else {
+            continue;
+        };
+        let geojson: GeoJson = yaml_serde::from_str(&fs::read_to_string(pack.join(path))?)?;
+        let (kind, coordinates) = geometry_coordinates(geojson)?;
+        if (layer.kind == "line" && kind != "LineString")
+            || (layer.kind == "polygon" && kind != "Polygon")
+        {
+            return Err(format!("Layer '{}' does not match GeoJSON {kind}", layer.id).into());
+        }
+        layer.points = coordinates
+            .into_iter()
+            .map(|[longitude, latitude]| {
+                [
+                    ((longitude - west) / (east - west) * scene.canvas.width as f64) as f32,
+                    ((north - latitude) / (north - south) * scene.canvas.height as f64) as f32,
+                ]
+            })
+            .collect();
+    }
+    Ok(())
+}
+
+fn geometry_coordinates(geojson: GeoJson) -> RenderResult<(&'static str, Vec<[f64; 2]>)> {
+    match geojson {
+        GeoJson::Feature { geometry } => geometry_coordinates(*geometry),
+        GeoJson::LineString { coordinates } => Ok(("LineString", coordinates)),
+        GeoJson::Polygon { coordinates } => coordinates
+            .into_iter()
+            .next()
+            .map(|ring| ("Polygon", ring))
+            .ok_or_else(|| "GeoJSON Polygon needs a linear ring".into()),
+    }
 }
 
 fn validate(scene: &Scene, sources: &Sources) -> RenderResult<()> {
@@ -114,6 +173,9 @@ fn validate(scene: &Scene, sources: &Sources) -> RenderResult<()> {
                 layer.id, layer.kind
             )
             .into());
+        }
+        if layer.points.len() < if layer.kind == "polygon" { 3 } else { 2 } {
+            return Err(format!("Layer '{}' has too few points", layer.id).into());
         }
         validate_references(
             &layer.sources,

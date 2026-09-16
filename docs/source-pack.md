@@ -17,6 +17,7 @@ title: Bangkok's Flat Delta
 canvas:
   width: 3840
   height: 2160
+bounds: [100.3278772, 13.2191019, 100.9386039, 13.9551693]
 background: "#edf0e7"
 layers:
   - id: terrain
@@ -38,6 +39,8 @@ labels:
 ```
 
 Supported layer kinds are `polygon` and `line`. Omit `canvas` to render at the default 3840×2160. The Scene source retains named layers; phase one exports one flattened PNG.
+
+For local GeoJSON, add `geojson: data/file.geojson` to a layer and set `bounds` as `[west, south, east, north]`. The first release accepts GeoJSON `LineString` and `Polygon` geometry, including a single `Feature`; it projects longitude/latitude coordinates into the Scene canvas.
 
 ## `sources.yaml`
 

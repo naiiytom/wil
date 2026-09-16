@@ -9,6 +9,11 @@ sources:
     url: https://www.openstreetmap.org/copyright
     license: ODbL-1.0 (© OpenStreetMap contributors)
     retrieved: 2026-09-16
+  - id: osm-bangkok-boundary
+    title: OpenStreetMap Bangkok Metropolitan Administration boundary via Nominatim
+    url: https://nominatim.openstreetmap.org/
+    license: ODbL-1.0 (© OpenStreetMap contributors)
+    retrieved: 2026-09-16
   - id: srtm-elevation
     title: NASA Shuttle Radar Topography Mission elevation data
     url: https://www.earthdata.nasa.gov/centers/lp-daac

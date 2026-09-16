@@ -161,6 +161,59 @@ sources:
 }
 
 #[test]
+fn renders_a_local_geojson_line() {
+    let pack = temporary_pack();
+    fs::create_dir_all(pack.join("data")).unwrap();
+    fs::write(
+        pack.join("scene.yaml"),
+        r##"
+canvas:
+  width: 120
+  height: 80
+bounds: [100.0, 13.0, 101.0, 14.0]
+background: "#ffffff"
+layers:
+  - id: river
+    kind: line
+    stroke: "#334455"
+    stroke_width: 10
+    points: []
+    geojson: data/river.geojson
+    sources: [basin]
+"##,
+    )
+    .unwrap();
+    fs::write(
+        pack.join("sources.yaml"),
+        r#"
+sources:
+  - id: basin
+    title: Test source
+    url: https://example.com/source
+    license: CC0-1.0
+    retrieved: 2026-09-16
+"#,
+    )
+    .unwrap();
+    fs::write(
+        pack.join("data/river.geojson"),
+        r#"{"type":"Feature","geometry":{"type":"LineString","coordinates":[[100.1,13.9],[100.9,13.1]]},"properties":{}}"#,
+    )
+    .unwrap();
+    let output = pack.join("render.png");
+
+    render_source_pack(&pack, &output).unwrap();
+
+    let decoder = png::Decoder::new(BufReader::new(fs::File::open(&output).unwrap()));
+    let mut reader = decoder.read_info().unwrap();
+    let mut pixels = vec![0; reader.output_buffer_size().unwrap()];
+    reader.next_frame(&mut pixels).unwrap();
+    let river = &pixels[(40 * 120 + 60) * 4..(40 * 120 + 61) * 4];
+    assert!(river[0] < 100 && river[1] < 100 && river[2] < 100);
+    fs::remove_dir_all(pack).unwrap();
+}
+
+#[test]
 fn rejects_layers_without_a_source_reference() {
     let pack = temporary_pack();
     write_source_pack(&pack, "[]");
