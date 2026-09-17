@@ -109,6 +109,8 @@ pub struct SequencePack {
     #[serde(default)]
     animations: Vec<LayerAnimation>,
     #[serde(default)]
+    label_animations: Vec<LabelAnimation>,
+    #[serde(default)]
     map_transition: Option<MapTransition>,
     #[serde(default)]
     assume_crs: Option<String>,
@@ -132,6 +134,14 @@ pub struct LayerAnimation {
     translate: TransformKeyframes,
     #[serde(default)]
     scale: Vec<NumberKeyframe>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct LabelAnimation {
+    label: String,
+    #[serde(default)]
+    opacity: Vec<NumberKeyframe>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -163,13 +173,18 @@ struct FrameScene<'a> {
     canvas: &'a Canvas,
     background: &'a str,
     layers: Vec<FrameLayer<'a>>,
-    labels: Vec<&'a Label>,
+    labels: Vec<FrameLabel<'a>>,
     map_transform: FrameTransform,
 }
 
 struct FrameLayer<'a> {
     layer: &'a Layer,
     transform: FrameTransform,
+}
+
+struct FrameLabel<'a> {
+    label: &'a Label,
+    opacity: f64,
 }
 
 #[derive(Clone, Copy)]
@@ -347,7 +362,14 @@ fn static_frame_scene(scene: &Scene) -> FrameScene<'_> {
                 transform: FrameTransform::IDENTITY,
             })
             .collect(),
-        labels: scene.labels.iter().collect(),
+        labels: scene
+            .labels
+            .iter()
+            .map(|label| FrameLabel {
+                label,
+                opacity: 1.0,
+            })
+            .collect(),
         map_transform: FrameTransform::IDENTITY,
     }
 }
@@ -398,6 +420,15 @@ fn frame_scene(sequence: &SequencePack, time: f64) -> FrameScene<'_> {
                     .scene
                     .as_deref()
                     .is_none_or(|scene| Some(scene) == active_scene)
+            })
+            .map(|label| {
+                let opacity = sequence
+                    .label_animations
+                    .iter()
+                    .find(|a| a.label == label.text)
+                    .map(|a| interpolate(&a.opacity, time, 1.0))
+                    .unwrap_or(1.0);
+                FrameLabel { label, opacity }
             })
             .collect(),
         map_transform,
@@ -627,6 +658,25 @@ fn validate_sequence(sequence: &SequencePack, sources: &Sources) -> RenderResult
             "map transition scale",
         )?;
     }
+    let label_texts: HashSet<&str> = sequence.labels.iter().map(|l| l.text.as_str()).collect();
+    let mut animation_labels = HashSet::new();
+    for animation in &sequence.label_animations {
+        if !label_texts.contains(animation.label.as_str()) {
+            return Err(format!(
+                "label_animation references unknown label '{}'",
+                animation.label
+            )
+            .into());
+        }
+        if !animation_labels.insert(animation.label.as_str()) {
+            return Err("label_animation target labels must be unique".into());
+        }
+        validate_keyframes(
+            &animation.opacity,
+            sequence.duration_seconds,
+            "label opacity",
+        )?;
+    }
     Ok(())
 }
 
@@ -647,10 +697,14 @@ fn validate_source_metadata(sources: &Sources) -> RenderResult<()> {
 }
 
 fn validate_crs(assume_crs: Option<&str>) -> RenderResult<()> {
-    if assume_crs.is_some_and(|value| !value.starts_with("EPSG:")) {
-        return Err("assume_crs must begin with EPSG:".into());
+    match assume_crs {
+        None => Ok(()),
+        Some("EPSG:4326") => Ok(()),
+        Some(value) => Err(format!(
+            "assume_crs '{value}' is not supported; only EPSG:4326 is accepted until projection conversion is implemented"
+        )
+        .into()),
     }
-    Ok(())
 }
 
 fn validate_keyframes(
@@ -753,8 +807,14 @@ fn compose_svg(scene: &FrameScene<'_>) -> String {
         }
         svg.push_str("</g>");
     }
-    for label in &scene.labels {
-        svg.push_str(&format!(r##"<text x="{}" y="{}" fill="#252525" font-family="sans-serif" font-size="16" font-weight="700">{}</text>"##, label.x, label.y, escape(&label.text)));
+    for frame_label in &scene.labels {
+        let label = frame_label.label;
+        let opacity_attr = if frame_label.opacity < 1.0 {
+            format!(" opacity=\"{:.3}\"", frame_label.opacity)
+        } else {
+            String::new()
+        };
+        svg.push_str(&format!(r##"<text x="{}" y="{}" fill="#252525" font-family="sans-serif" font-size="16" font-weight="700"{}>{}</text>"##, label.x, label.y, opacity_attr, escape(&label.text)));
     }
     svg.push_str("</g></svg>");
     svg

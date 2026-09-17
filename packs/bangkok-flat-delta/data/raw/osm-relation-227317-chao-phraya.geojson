@@ -1,0 +1,1 @@
+{"type":"FeatureCollection","features":[{"type":"Feature","properties":{"@id":"relation/227317","name":"Chao Phraya","name:en":"Chao Phraya","natural":"water","water":"river","type":"multipolygon"},"geometry":{"type":"LineString","coordinates":[[100.4920261,13.7423108],[100.4923003,13.7420252],[100.4932769,13.7411518],[100.4936547,13.7408369],[100.4937779,13.7407529]]}}]}
