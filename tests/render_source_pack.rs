@@ -200,6 +200,90 @@ fn sequence_frames_change_when_a_layer_fades_in() {
 }
 
 #[test]
+fn renders_a_sequence_layer_from_local_geojson() {
+    let pack = temporary_sequence_pack("");
+    let sequence = fs::read_to_string(pack.join("sequence.yaml"))
+        .unwrap()
+        .replace(
+            "    sources: [basin]\nlabels: []",
+            r##"    sources: [basin]
+  - id: river
+    kind: line
+    stroke: "#334455"
+    stroke_width: 10
+    geojson: data/river.geojson
+    sources: [basin]
+labels: []"##,
+        );
+    fs::write(pack.join("sequence.yaml"), sequence).unwrap();
+    fs::create_dir_all(pack.join("data")).unwrap();
+    fs::write(
+        pack.join("data/river.geojson"),
+        r#"{"type":"Feature","geometry":{"type":"LineString","coordinates":[[100.1,13.9],[100.9,13.1]]},"properties":{}}"#,
+    )
+    .unwrap();
+
+    let png = render_sequence_frame(&pack, 0).unwrap();
+    let decoder = png::Decoder::new(BufReader::new(std::io::Cursor::new(png)));
+    let mut reader = decoder.read_info().unwrap();
+    let mut pixels = vec![0; reader.output_buffer_size().unwrap()];
+    reader.next_frame(&mut pixels).unwrap();
+    let river = &pixels[(90 * 320 + 160) * 4..(90 * 320 + 161) * 4];
+    assert!(river[0] < 100 && river[1] < 100 && river[2] < 100);
+    fs::remove_dir_all(pack).unwrap();
+}
+
+#[test]
+fn renders_an_attribution_card_only_in_its_scene() {
+    let pack = temporary_sequence_pack("");
+    let sequence = fs::read_to_string(pack.join("sequence.yaml"))
+        .unwrap()
+        .replace(
+            "labels: []",
+            r#"labels:
+  - text: "Attribution Card"
+    x: 50
+    y: 50
+    scene: final
+    sources: [basin]
+"#,
+        )
+        .replace(
+            "  - id: rainfall\n    start: 0.0\n    end: 2.0\n",
+            "  - id: rainfall\n    start: 0.0\n    end: 1.0\n  - id: final\n    start: 1.0\n    end: 2.0\n",
+        );
+    fs::write(pack.join("sequence.yaml"), sequence).unwrap();
+
+    assert_ne!(
+        render_sequence_frame(&pack, 0).unwrap(),
+        render_sequence_frame(&pack, 2).unwrap()
+    );
+    fs::remove_dir_all(pack).unwrap();
+}
+
+#[test]
+fn rejects_an_attribution_card_for_an_unknown_scene() {
+    let pack = temporary_sequence_pack("");
+    let sequence = fs::read_to_string(pack.join("sequence.yaml"))
+        .unwrap()
+        .replace(
+            "labels: []",
+            r#"labels:
+  - text: "Attribution Card"
+    x: 50
+    y: 50
+    scene: missing
+    sources: [basin]
+"#,
+        );
+    fs::write(pack.join("sequence.yaml"), sequence).unwrap();
+
+    let error = validate_sequence_pack(&pack).unwrap_err();
+    assert!(error.to_string().contains("unknown Scene 'missing'"));
+    fs::remove_dir_all(pack).unwrap();
+}
+
+#[test]
 fn renders_a_valid_frame_during_a_map_transition() {
     let pack = temporary_transition_pack();
     assert!(

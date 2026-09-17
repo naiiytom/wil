@@ -12,7 +12,6 @@ layers:
     kind: line
     stroke: "#4f8790"
     stroke_width: 34
-    points: [[881, 1812], [923, 1808], [992, 1798], [1034, 1833], [1128, 1816], [1218, 1812], [1369, 1814], [1535, 1804], [1747, 1787], [1984, 1776], [2232, 1791], [2487, 1785], [2694, 1776], [2952, 1751], [3164, 1725], [3274, 1684], [3444, 1557]]
     geojson: data/geometry/coastline.geojson
     sources: [osm-coastline]
   - id: chao-phraya
@@ -20,7 +19,6 @@ layers:
     stroke: "#2d6877"
     stroke_width: 110
     lift: 18
-    points: [[1604, 247], [1608, 249], [1625, 254], [1631, 256], [1633, 257]]
     geojson: data/geometry/chao-phraya.geojson
     sources: [osm-water]
   - id: canals
@@ -28,7 +26,6 @@ layers:
     stroke: "#64949b"
     stroke_width: 36
     lift: 26
-    points: [[1971, 455], [1967, 455], [1964, 455], [1958, 455], [1950, 454], [1942, 453], [1935, 452], [1928, 452], [1905, 449], [1899, 448], [1883, 443]]
     geojson: data/geometry/canals.geojson
     sources: [osm-water]
   - id: drainage-study-area
@@ -37,7 +34,6 @@ layers:
     stroke: "#4b7a83"
     stroke_width: 12
     lift: 10
-    points: [[1136, 294], [1485, 163], [2270, 229], [2620, 458], [2358, 818], [1745, 1014], [1222, 851], [1136, 294]]
     geojson: data/geometry/flood-area.geojson
     sources: [osm-bangkok-boundary]
   - id: rainfall-treatment
@@ -50,13 +46,13 @@ layers:
     kind: line
     stroke: "#b95c43"
     stroke_width: 144
-    points: [[1604, 247], [1608, 249], [1625, 254], [1631, 256], [1633, 257]]
+    geojson: data/geometry/chao-phraya.geojson
     sources: [osm-water]
   - id: tide-blocked-outflow
     kind: line
     stroke: "#b95c43"
     stroke_width: 58
-    points: [[881, 1812], [923, 1808], [992, 1798], [1034, 1833], [1128, 1816], [1218, 1812], [1369, 1814], [1535, 1804], [1747, 1787], [1984, 1776], [2232, 1791], [2487, 1785], [2694, 1776], [2952, 1751], [3164, 1725], [3274, 1684], [3444, 1557]]
+    geojson: data/geometry/coastline.geojson
     sources: [osm-coastline]
 labels:
   - text: CHAO PHRAYA RIVER
@@ -70,6 +66,7 @@ labels:
   - text: Geographic features are source-backed; timing is illustrative.
     x: 1040
     y: 2060
+    scene: tide-blocked-outflow
     sources: [wmo-urban-flood-guidance]
 scenes:
   - id: rainfall-overload

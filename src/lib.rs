@@ -57,6 +57,7 @@ struct Layer {
     lift: f32,
     #[serde(default)]
     geojson: Option<String>,
+    #[serde(default)]
     points: Vec<[f32; 2]>,
     #[serde(default)]
     sources: Vec<String>,
@@ -68,6 +69,8 @@ struct Label {
     text: String,
     x: f32,
     y: f32,
+    #[serde(default)]
+    scene: Option<String>,
     #[serde(default)]
     sources: Vec<String>,
 }
@@ -160,7 +163,7 @@ struct FrameScene<'a> {
     canvas: &'a Canvas,
     background: &'a str,
     layers: Vec<FrameLayer<'a>>,
-    labels: &'a [Label],
+    labels: Vec<&'a Label>,
     map_transform: FrameTransform,
 }
 
@@ -319,8 +322,15 @@ fn render_png(scene: FrameScene<'_>) -> RenderResult<Vec<u8>> {
 
 pub fn validate_sequence_pack(pack: impl AsRef<Path>) -> RenderResult<SequencePack> {
     let pack = pack.as_ref();
-    let sequence = yaml_serde::from_str(&fs::read_to_string(pack.join("sequence.yaml"))?)?;
+    let mut sequence: SequencePack =
+        yaml_serde::from_str(&fs::read_to_string(pack.join("sequence.yaml"))?)?;
     let sources = yaml_serde::from_str(&fs::read_to_string(pack.join("sources.yaml"))?)?;
+    resolve_geojson_layers(
+        &mut sequence.layers,
+        &sequence.canvas,
+        Some(sequence.bounds),
+        pack,
+    )?;
     validate_sequence(&sequence, &sources)?;
     Ok(sequence)
 }
@@ -337,7 +347,7 @@ fn static_frame_scene(scene: &Scene) -> FrameScene<'_> {
                 transform: FrameTransform::IDENTITY,
             })
             .collect(),
-        labels: &scene.labels,
+        labels: scene.labels.iter().collect(),
         map_transform: FrameTransform::IDENTITY,
     }
 }
@@ -371,11 +381,25 @@ fn frame_scene(sequence: &SequencePack, time: f64) -> FrameScene<'_> {
             FrameLayer { layer, transform }
         })
         .collect();
+    let active_scene = sequence
+        .scenes
+        .iter()
+        .find(|scene| time >= scene.start && time < scene.end)
+        .map(|scene| scene.id.as_str());
     FrameScene {
         canvas: &sequence.canvas,
         background: &sequence.background,
         layers,
-        labels: &sequence.labels,
+        labels: sequence
+            .labels
+            .iter()
+            .filter(|label| {
+                label
+                    .scene
+                    .as_deref()
+                    .is_none_or(|scene| Some(scene) == active_scene)
+            })
+            .collect(),
         map_transform,
     }
 }
@@ -397,8 +421,17 @@ pub fn interpolate(keyframes: &[NumberKeyframe], time: f64, default: f64) -> f64
 }
 
 fn resolve_geojson(scene: &mut Scene, pack: &Path) -> RenderResult<()> {
-    let Some([west, south, east, north]) = scene.bounds else {
-        if scene.layers.iter().any(|layer| layer.geojson.is_some()) {
+    resolve_geojson_layers(&mut scene.layers, &scene.canvas, scene.bounds, pack)
+}
+
+fn resolve_geojson_layers(
+    layers: &mut [Layer],
+    canvas: &Canvas,
+    bounds: Option<[f64; 4]>,
+    pack: &Path,
+) -> RenderResult<()> {
+    let Some([west, south, east, north]) = bounds else {
+        if layers.iter().any(|layer| layer.geojson.is_some()) {
             return Err("Scene bounds are required for GeoJSON layers".into());
         }
         return Ok(());
@@ -406,7 +439,7 @@ fn resolve_geojson(scene: &mut Scene, pack: &Path) -> RenderResult<()> {
     if east <= west || north <= south {
         return Err("Scene bounds must be west, south, east, north".into());
     }
-    for layer in &mut scene.layers {
+    for layer in layers {
         let Some(path) = &layer.geojson else {
             continue;
         };
@@ -421,8 +454,8 @@ fn resolve_geojson(scene: &mut Scene, pack: &Path) -> RenderResult<()> {
             .into_iter()
             .map(|[longitude, latitude]| {
                 [
-                    ((longitude - west) / (east - west) * scene.canvas.width as f64) as f32,
-                    ((north - latitude) / (north - south) * scene.canvas.height as f64) as f32,
+                    ((longitude - west) / (east - west) * canvas.width as f64) as f32,
+                    ((north - latitude) / (north - south) * canvas.height as f64) as f32,
                 ]
             })
             .collect();
@@ -545,6 +578,15 @@ fn validate_sequence(sequence: &SequencePack, sources: &Sources) -> RenderResult
     }
     if end != sequence.duration_seconds {
         return Err("sequence Scenes must span zero through duration_seconds".into());
+    }
+    for label in &sequence.labels {
+        if let Some(scene) = &label.scene {
+            if !scene_ids.contains(scene.as_str()) {
+                return Err(
+                    format!("Label '{}' references unknown Scene '{scene}'", label.text).into(),
+                );
+            }
+        }
     }
 
     let mut animation_layers = HashSet::new();
@@ -711,7 +753,7 @@ fn compose_svg(scene: &FrameScene<'_>) -> String {
         }
         svg.push_str("</g>");
     }
-    for label in scene.labels {
+    for label in &scene.labels {
         svg.push_str(&format!(r##"<text x="{}" y="{}" fill="#252525" font-family="sans-serif" font-size="16" font-weight="700">{}</text>"##, label.x, label.y, escape(&label.text)));
     }
     svg.push_str("</g></svg>");
