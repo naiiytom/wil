@@ -74,9 +74,12 @@ map_transition:
     x: []
     y: []
   scale: []
+label_animations:
+  - label: "Geographic features are source-backed; timing is illustrative."
+    opacity: [{at: 8.0, value: 0.0}, {at: 10.5, value: 0.0}, {at: 11.5, value: 1.0}, {at: 12.0, value: 1.0}]
 ```
 
-The full `sequence.yaml` key set is `title`, `canvas`, `bounds`, `background`, `fps`, `duration_seconds`, `layers`, `labels`, `scenes`, optional `animations`, optional `map_transition`, and optional `assume_crs`. Each keyframe is `{at: seconds, value: number}`. Keyframes are finite, strictly increasing, and within the duration. Scenes have unique IDs and contiguous `[start, end)` ranges spanning zero through `duration_seconds`; layer IDs and animation targets are unique. `fps` and duration are positive and their product is a whole frame count. Every layer and label has known source IDs.
+The full `sequence.yaml` key set is `title`, `canvas`, `bounds`, `background`, `fps`, `duration_seconds`, `layers`, `labels`, `scenes`, optional `animations`, optional `label_animations`, optional `map_transition`, and optional `assume_crs`. Each keyframe is `{at: seconds, value: number}`. Keyframes are finite, strictly increasing, and within the duration. Scenes have unique IDs and contiguous `[start, end)` ranges spanning zero through `duration_seconds`; layer IDs and animation targets are unique. `fps` and duration are positive and their product is a whole frame count. Every layer and label has known source IDs. Optional `scene` on labels scopes visibility to a single Scene, and `label_animations` interpolates label opacity across timestamps.
 
 `assume_crs: EPSG:4326` explicitly declares WGS 84 only when source data has no CRS metadata. Use the documented source CRS whenever it is available; `assume_crs` values must begin with `EPSG:`. The same optional key may be attached to a source entry in `sources.yaml`.
 

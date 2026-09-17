@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (\`- [ ]\`) syntax for tracking.
 
-**Goal:** Render a deterministic, source-backed, three-stage Bangkok animation as numbered 4K/30 fps PNG frames.
+**Goal:** Render a deterministic, source-backed, three-stage Bangkok Scene Sequence as numbered 4K/30 fps PNG frames.
 
 **Architecture:** Keep static rendering intact and add a strict \`sequence.yaml\` model beside it. Reuse SVG composition and resvg per frame, applying only interpolated layer and global map transforms. Validate the entire pack before creating output, then write frames and a YAML handoff manifest.
 

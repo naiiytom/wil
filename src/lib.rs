@@ -15,6 +15,7 @@ pub type RenderResult<T> = Result<T, Box<dyn Error>>;
 #[serde(deny_unknown_fields)]
 struct Scene {
     #[serde(default)]
+    #[allow(dead_code)]
     title: String,
     #[serde(default)]
     canvas: Canvas,
@@ -116,12 +117,12 @@ pub struct SequencePack {
     assume_crs: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, serde::Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct SequenceScene {
-    id: String,
-    start: f64,
-    end: f64,
+    pub id: String,
+    pub start: f64,
+    pub end: f64,
 }
 
 #[derive(Debug, Deserialize)]
@@ -246,7 +247,7 @@ pub fn render_sequence_pack(pack: impl AsRef<Path>, output: impl AsRef<Path>) ->
         }
         fs::write(
             temporary.join("render-manifest.yaml"),
-            render_manifest(&sequence, frame_count),
+            render_manifest(&sequence, frame_count)?,
         )?;
         Ok(())
     })();
@@ -285,21 +286,28 @@ fn temporary_output_directory(output: &Path) -> RenderResult<PathBuf> {
     Err("could not create a unique sequence render directory".into())
 }
 
-fn render_manifest(sequence: &SequencePack, frame_count: usize) -> String {
-    let mut manifest = format!(
-        "title: {:?}\nfps: {}\nduration_seconds: {}\nframe_count: {frame_count}\nframe_pattern: frame-%06d.png\nscenes:\n",
-        sequence.title, sequence.fps, sequence.duration_seconds
-    );
-    for scene in &sequence.scenes {
-        manifest.push_str(&format!(
-            "  - id: {:?}\n    start: {}\n    end: {}\n",
-            scene.id, scene.start, scene.end
-        ));
-    }
-    manifest.push_str(
-        "attribution_card: \"Geographic features are source-backed; timing is illustrative.\"\n",
-    );
-    manifest
+#[derive(serde::Serialize)]
+struct RenderManifest<'a> {
+    title: &'a str,
+    fps: u32,
+    duration_seconds: f64,
+    frame_count: usize,
+    frame_pattern: &'static str,
+    scenes: &'a [SequenceScene],
+    attribution_card: &'static str,
+}
+
+fn render_manifest(sequence: &SequencePack, frame_count: usize) -> RenderResult<String> {
+    let manifest = RenderManifest {
+        title: &sequence.title,
+        fps: sequence.fps,
+        duration_seconds: sequence.duration_seconds,
+        frame_count,
+        frame_pattern: "frame-%06d.png",
+        scenes: &sequence.scenes,
+        attribution_card: "Geographic features are source-backed; timing is illustrative.",
+    };
+    Ok(yaml_serde::to_string(&manifest)?)
 }
 
 fn render_sequence_frame_from_sequence(
@@ -345,6 +353,8 @@ pub fn validate_sequence_pack(pack: impl AsRef<Path>) -> RenderResult<SequencePa
         &sequence.canvas,
         Some(sequence.bounds),
         pack,
+        sequence.assume_crs.as_deref(),
+        Some(&sources),
     )?;
     validate_sequence(&sequence, &sources)?;
     Ok(sequence)
@@ -378,12 +388,7 @@ fn frame_scene(sequence: &SequencePack, time: f64) -> FrameScene<'_> {
     let map_transform = sequence
         .map_transition
         .as_ref()
-        .map(|transition| FrameTransform {
-            opacity: 1.0,
-            x: interpolate(&transition.translate.x, time, 0.0),
-            y: interpolate(&transition.translate.y, time, 0.0),
-            scale: interpolate(&transition.scale, time, 1.0),
-        })
+        .map(|transition| interpolate_spatial(&transition.translate, &transition.scale, 1.0, time))
         .unwrap_or(FrameTransform::IDENTITY);
     let layers = sequence
         .layers
@@ -393,11 +398,13 @@ fn frame_scene(sequence: &SequencePack, time: f64) -> FrameScene<'_> {
                 .animations
                 .iter()
                 .find(|animation| animation.layer == layer.id)
-                .map(|animation| FrameTransform {
-                    opacity: interpolate(&animation.opacity, time, 1.0),
-                    x: interpolate(&animation.translate.x, time, 0.0),
-                    y: interpolate(&animation.translate.y, time, 0.0),
-                    scale: interpolate(&animation.scale, time, 1.0),
+                .map(|animation| {
+                    interpolate_spatial(
+                        &animation.translate,
+                        &animation.scale,
+                        interpolate(&animation.opacity, time, 1.0),
+                        time,
+                    )
                 })
                 .unwrap_or(FrameTransform::IDENTITY);
             FrameLayer { layer, transform }
@@ -451,8 +458,29 @@ pub fn interpolate(keyframes: &[NumberKeyframe], time: f64, default: f64) -> f64
     keyframes.last().unwrap().value
 }
 
+fn interpolate_spatial(
+    translate: &TransformKeyframes,
+    scale: &[NumberKeyframe],
+    opacity: f64,
+    time: f64,
+) -> FrameTransform {
+    FrameTransform {
+        opacity,
+        x: interpolate(&translate.x, time, 0.0),
+        y: interpolate(&translate.y, time, 0.0),
+        scale: interpolate(scale, time, 1.0),
+    }
+}
+
 fn resolve_geojson(scene: &mut Scene, pack: &Path) -> RenderResult<()> {
-    resolve_geojson_layers(&mut scene.layers, &scene.canvas, scene.bounds, pack)
+    resolve_geojson_layers(
+        &mut scene.layers,
+        &scene.canvas,
+        scene.bounds,
+        pack,
+        None,
+        None,
+    )
 }
 
 fn resolve_geojson_layers(
@@ -460,6 +488,8 @@ fn resolve_geojson_layers(
     canvas: &Canvas,
     bounds: Option<[f64; 4]>,
     pack: &Path,
+    assume_crs: Option<&str>,
+    sources: Option<&Sources>,
 ) -> RenderResult<()> {
     let Some([west, south, east, north]) = bounds else {
         if layers.iter().any(|layer| layer.geojson.is_some()) {
@@ -474,7 +504,35 @@ fn resolve_geojson_layers(
         let Some(path) = &layer.geojson else {
             continue;
         };
-        let geojson: GeoJson = yaml_serde::from_str(&fs::read_to_string(pack.join(path))?)?;
+        let raw = fs::read_to_string(pack.join(path))?;
+        let value: yaml_serde::Value = yaml_serde::from_str(&raw)?;
+        if sources.is_some() {
+            let has_crs = match &value {
+                yaml_serde::Value::Mapping(map) => map.keys().any(|k| match k {
+                    yaml_serde::Value::String(s) => s == "crs",
+                    _ => false,
+                }),
+                _ => false,
+            };
+            if has_crs {
+                validate_geojson_crs(&value, path)?;
+            } else {
+                let has_source_assume = sources.is_some_and(|s| {
+                    layer.sources.iter().any(|source_id| {
+                        s.sources
+                            .iter()
+                            .any(|src| src.id == *source_id && src.assume_crs.is_some())
+                    })
+                });
+                if assume_crs.is_none() && !has_source_assume {
+                    return Err(format!(
+                        "Source input '{path}' lacks CRS metadata; declare an explicit 'assume_crs: EPSG:…' in the manifest"
+                    )
+                    .into());
+                }
+            }
+        }
+        let geojson: GeoJson = yaml_serde::from_str(&raw)?;
         let (kind, coordinates) = geometry_coordinates(geojson)?;
         if (layer.kind == "line" && kind != "LineString")
             || (layer.kind == "polygon" && kind != "Polygon")
@@ -490,6 +548,55 @@ fn resolve_geojson_layers(
                 ]
             })
             .collect();
+    }
+    Ok(())
+}
+
+fn validate_geojson_crs(value: &yaml_serde::Value, path: &str) -> RenderResult<()> {
+    if let yaml_serde::Value::Mapping(map) = value {
+        for (k, v) in map {
+            if let yaml_serde::Value::String(k_str) = k {
+                if k_str == "crs" {
+                    let crs_name = match v {
+                        yaml_serde::Value::String(s) => Some(s.as_str()),
+                        yaml_serde::Value::Mapping(crs_map) => {
+                            crs_map.iter().find_map(|(ck, cv)| {
+                                if let (
+                                    yaml_serde::Value::String(ck_str),
+                                    yaml_serde::Value::Mapping(props),
+                                ) = (ck, cv)
+                                {
+                                    if ck_str == "properties" {
+                                        return props.iter().find_map(|(pk, pv)| {
+                                            if let (
+                                                yaml_serde::Value::String(pk_str),
+                                                yaml_serde::Value::String(pv_str),
+                                            ) = (pk, pv)
+                                            {
+                                                if pk_str == "name" {
+                                                    return Some(pv_str.as_str());
+                                                }
+                                            }
+                                            None
+                                        });
+                                    }
+                                }
+                                None
+                            })
+                        }
+                        _ => None,
+                    };
+                    if let Some(name) = crs_name {
+                        if !matches!(
+                            name,
+                            "EPSG:4326" | "urn:ogc:def:crs:OGC:1.3:CRS84" | "CRS84"
+                        ) {
+                            return Err(format!("Source input '{path}' declares unsupported CRS '{name}'; only WGS 84 (EPSG:4326) is accepted").into());
+                        }
+                    }
+                }
+            }
+        }
     }
     Ok(())
 }
@@ -629,33 +736,19 @@ fn validate_sequence(sequence: &SequencePack, sources: &Sources) -> RenderResult
             return Err("animation target layers must be unique".into());
         }
         validate_keyframes(&animation.opacity, sequence.duration_seconds, "opacity")?;
-        validate_keyframes(
-            &animation.translate.x,
+        validate_spatial(
+            &animation.translate,
+            &animation.scale,
             sequence.duration_seconds,
-            "translate.x",
+            "animation",
         )?;
-        validate_keyframes(
-            &animation.translate.y,
-            sequence.duration_seconds,
-            "translate.y",
-        )?;
-        validate_keyframes(&animation.scale, sequence.duration_seconds, "scale")?;
     }
     if let Some(transition) = &sequence.map_transition {
-        validate_keyframes(
-            &transition.translate.x,
-            sequence.duration_seconds,
-            "map transition translate.x",
-        )?;
-        validate_keyframes(
-            &transition.translate.y,
-            sequence.duration_seconds,
-            "map transition translate.y",
-        )?;
-        validate_keyframes(
+        validate_spatial(
+            &transition.translate,
             &transition.scale,
             sequence.duration_seconds,
-            "map transition scale",
+            "map transition",
         )?;
     }
     let label_texts: HashSet<&str> = sequence.labels.iter().map(|l| l.text.as_str()).collect();
@@ -728,6 +821,26 @@ fn validate_keyframes(
         }
         previous = Some(keyframe.at);
     }
+    Ok(())
+}
+
+fn validate_spatial(
+    translate: &TransformKeyframes,
+    scale: &[NumberKeyframe],
+    duration_seconds: f64,
+    context: &str,
+) -> RenderResult<()> {
+    validate_keyframes(
+        &translate.x,
+        duration_seconds,
+        &format!("{context} translate.x"),
+    )?;
+    validate_keyframes(
+        &translate.y,
+        duration_seconds,
+        &format!("{context} translate.y"),
+    )?;
+    validate_keyframes(scale, duration_seconds, &format!("{context} scale"))?;
     Ok(())
 }
 
@@ -807,6 +920,7 @@ fn compose_svg(scene: &FrameScene<'_>) -> String {
         }
         svg.push_str("</g>");
     }
+    svg.push_str("</g>");
     for frame_label in &scene.labels {
         let label = frame_label.label;
         let opacity_attr = if frame_label.opacity < 1.0 {
@@ -816,7 +930,7 @@ fn compose_svg(scene: &FrameScene<'_>) -> String {
         };
         svg.push_str(&format!(r##"<text x="{}" y="{}" fill="#252525" font-family="sans-serif" font-size="16" font-weight="700"{}>{}</text>"##, label.x, label.y, opacity_attr, escape(&label.text)));
     }
-    svg.push_str("</g></svg>");
+    svg.push_str("</svg>");
     svg
 }
 

@@ -219,7 +219,7 @@ labels: []"##,
     fs::create_dir_all(pack.join("data")).unwrap();
     fs::write(
         pack.join("data/river.geojson"),
-        r#"{"type":"Feature","geometry":{"type":"LineString","coordinates":[[100.1,13.9],[100.9,13.1]]},"properties":{}}"#,
+        r#"{"type":"Feature","crs":{"type":"name","properties":{"name":"EPSG:4326"}},"geometry":{"type":"LineString","coordinates":[[100.1,13.9],[100.9,13.1]]},"properties":{}}"#,
     )
     .unwrap();
 
@@ -230,6 +230,35 @@ labels: []"##,
     reader.next_frame(&mut pixels).unwrap();
     let river = &pixels[(90 * 320 + 160) * 4..(90 * 320 + 161) * 4];
     assert!(river[0] < 100 && river[1] < 100 && river[2] < 100);
+    fs::remove_dir_all(pack).unwrap();
+}
+
+#[test]
+fn rejects_sequence_geojson_lacking_crs_without_assume_crs() {
+    let pack = temporary_sequence_pack("");
+    let sequence = fs::read_to_string(pack.join("sequence.yaml"))
+        .unwrap()
+        .replace(
+            "    sources: [basin]\nlabels: []",
+            r##"    sources: [basin]
+  - id: river
+    kind: line
+    stroke: "#334455"
+    stroke_width: 10
+    geojson: data/river.geojson
+    sources: [basin]
+labels: []"##,
+        );
+    fs::write(pack.join("sequence.yaml"), sequence).unwrap();
+    fs::create_dir_all(pack.join("data")).unwrap();
+    fs::write(
+        pack.join("data/river.geojson"),
+        r#"{"type":"Feature","geometry":{"type":"LineString","coordinates":[[100.1,13.9],[100.9,13.1]]},"properties":{}}"#,
+    )
+    .unwrap();
+
+    let error = validate_sequence_pack(&pack).unwrap_err();
+    assert!(error.to_string().contains("lacks CRS metadata"));
     fs::remove_dir_all(pack).unwrap();
 }
 
