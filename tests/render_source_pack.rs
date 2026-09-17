@@ -6,7 +6,9 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
-use world_in_layers::{render_source_pack, validate_sequence_pack};
+use world_in_layers::{
+    NumberKeyframe, interpolate, render_sequence_frame, render_source_pack, validate_sequence_pack,
+};
 
 fn temporary_pack() -> PathBuf {
     let path = std::env::temp_dir().join(format!(
@@ -107,6 +109,59 @@ sources:
     )
     .unwrap();
     pack
+}
+
+fn keyframe(at: f64, value: f64) -> NumberKeyframe {
+    NumberKeyframe { at, value }
+}
+
+fn temporary_animated_pack() -> PathBuf {
+    temporary_sequence_pack(
+        r#"animations:
+  - layer: terrain
+    opacity: [{at: 0.0, value: 0.0}, {at: 2.0, value: 1.0}]
+"#,
+    )
+}
+
+fn temporary_transition_pack() -> PathBuf {
+    temporary_sequence_pack(
+        r#"map_transition:
+  translate:
+    x: [{at: 0.0, value: 0.0}, {at: 2.0, value: 8.0}]
+    y: [{at: 0.0, value: 0.0}, {at: 2.0, value: 4.0}]
+  scale: [{at: 0.0, value: 1.0}, {at: 2.0, value: 1.1}]
+"#,
+    )
+}
+
+#[test]
+fn interpolates_layer_opacity_at_the_frame_time() {
+    assert_eq!(
+        interpolate(&[keyframe(0.0, 0.0), keyframe(2.0, 1.0)], 1.0, 1.0),
+        0.5
+    );
+}
+
+#[test]
+fn sequence_frames_change_when_a_layer_fades_in() {
+    let pack = temporary_animated_pack();
+    assert_ne!(
+        render_sequence_frame(&pack, 0).unwrap(),
+        render_sequence_frame(&pack, 1).unwrap()
+    );
+    fs::remove_dir_all(pack).unwrap();
+}
+
+#[test]
+fn renders_a_valid_frame_during_a_map_transition() {
+    let pack = temporary_transition_pack();
+    assert!(
+        render_sequence_frame(&pack, 1)
+            .unwrap()
+            .starts_with(&[137, 80, 78, 71, 13, 10, 26, 10])
+    );
+    fs::remove_dir_all(pack).unwrap();
 }
 
 #[test]

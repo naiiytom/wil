@@ -127,8 +127,8 @@ pub struct LayerAnimation {
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct NumberKeyframe {
-    at: f64,
-    value: f64,
+    pub at: f64,
+    pub value: f64,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -149,6 +149,36 @@ pub struct MapTransition {
     scale: Vec<NumberKeyframe>,
 }
 
+struct FrameScene<'a> {
+    canvas: &'a Canvas,
+    background: &'a str,
+    layers: Vec<FrameLayer<'a>>,
+    labels: &'a [Label],
+    map_transform: FrameTransform,
+}
+
+struct FrameLayer<'a> {
+    layer: &'a Layer,
+    transform: FrameTransform,
+}
+
+#[derive(Clone, Copy)]
+struct FrameTransform {
+    opacity: f64,
+    x: f64,
+    y: f64,
+    scale: f64,
+}
+
+impl FrameTransform {
+    const IDENTITY: Self = Self {
+        opacity: 1.0,
+        x: 0.0,
+        y: 0.0,
+        scale: 1.0,
+    };
+}
+
 #[derive(Deserialize)]
 #[serde(tag = "type")]
 enum GeoJson {
@@ -164,6 +194,30 @@ pub fn render_source_pack(pack: impl AsRef<Path>, output: impl AsRef<Path>) -> R
     resolve_geojson(&mut scene, pack)?;
     validate(&scene, &sources)?;
 
+    fs::write(output, render_png(static_frame_scene(&scene))?)?;
+    Ok(())
+}
+
+pub fn render_sequence_frame(pack: impl AsRef<Path>, frame: usize) -> RenderResult<Vec<u8>> {
+    let sequence = validate_sequence_pack(pack)?;
+    render_sequence_frame_from_sequence(&sequence, frame)
+}
+
+fn render_sequence_frame_from_sequence(
+    sequence: &SequencePack,
+    frame: usize,
+) -> RenderResult<Vec<u8>> {
+    let frame_count = (sequence.duration_seconds * f64::from(sequence.fps)) as usize;
+    if frame >= frame_count {
+        return Err("sequence frame is outside the sequence duration".into());
+    }
+    render_png(frame_scene(
+        sequence,
+        frame as f64 / f64::from(sequence.fps),
+    ))
+}
+
+fn render_png(scene: FrameScene<'_>) -> RenderResult<Vec<u8>> {
     let svg = compose_svg(&scene);
     let mut options = resvg::usvg::Options::default();
     options.fontdb_mut().load_system_fonts();
@@ -175,8 +229,7 @@ pub fn render_source_pack(pack: impl AsRef<Path>, output: impl AsRef<Path>) -> R
         resvg::tiny_skia::Transform::identity(),
         &mut pixmap.as_mut(),
     );
-    pixmap.save_png(output)?;
-    Ok(())
+    Ok(pixmap.encode_png()?)
 }
 
 pub fn validate_sequence_pack(pack: impl AsRef<Path>) -> RenderResult<SequencePack> {
@@ -185,6 +238,77 @@ pub fn validate_sequence_pack(pack: impl AsRef<Path>) -> RenderResult<SequencePa
     let sources = yaml_serde::from_str(&fs::read_to_string(pack.join("sources.yaml"))?)?;
     validate_sequence(&sequence, &sources)?;
     Ok(sequence)
+}
+
+fn static_frame_scene(scene: &Scene) -> FrameScene<'_> {
+    FrameScene {
+        canvas: &scene.canvas,
+        background: &scene.background,
+        layers: scene
+            .layers
+            .iter()
+            .map(|layer| FrameLayer {
+                layer,
+                transform: FrameTransform::IDENTITY,
+            })
+            .collect(),
+        labels: &scene.labels,
+        map_transform: FrameTransform::IDENTITY,
+    }
+}
+
+fn frame_scene(sequence: &SequencePack, time: f64) -> FrameScene<'_> {
+    let map_transform = sequence
+        .map_transition
+        .as_ref()
+        .map(|transition| FrameTransform {
+            opacity: 1.0,
+            x: interpolate(&transition.translate.x, time, 0.0),
+            y: interpolate(&transition.translate.y, time, 0.0),
+            scale: interpolate(&transition.scale, time, 1.0),
+        })
+        .unwrap_or(FrameTransform::IDENTITY);
+    let layers = sequence
+        .layers
+        .iter()
+        .map(|layer| {
+            let transform = sequence
+                .animations
+                .iter()
+                .find(|animation| animation.layer == layer.id)
+                .map(|animation| FrameTransform {
+                    opacity: interpolate(&animation.opacity, time, 1.0),
+                    x: interpolate(&animation.translate.x, time, 0.0),
+                    y: interpolate(&animation.translate.y, time, 0.0),
+                    scale: interpolate(&animation.scale, time, 1.0),
+                })
+                .unwrap_or(FrameTransform::IDENTITY);
+            FrameLayer { layer, transform }
+        })
+        .collect();
+    FrameScene {
+        canvas: &sequence.canvas,
+        background: &sequence.background,
+        layers,
+        labels: &sequence.labels,
+        map_transform,
+    }
+}
+
+pub fn interpolate(keyframes: &[NumberKeyframe], time: f64, default: f64) -> f64 {
+    let Some(first) = keyframes.first() else {
+        return default;
+    };
+    if time <= first.at {
+        return first.value;
+    }
+    for pair in keyframes.windows(2) {
+        if time <= pair[1].at {
+            let fraction = (time - pair[0].at) / (pair[1].at - pair[0].at);
+            return pair[0].value + (pair[1].value - pair[0].value) * fraction;
+        }
+    }
+    keyframes.last().unwrap().value
 }
 
 fn resolve_geojson(scene: &mut Scene, pack: &Path) -> RenderResult<()> {
@@ -436,7 +560,7 @@ fn validate_references(
     Ok(())
 }
 
-fn compose_svg(scene: &Scene) -> String {
+fn compose_svg(scene: &FrameScene<'_>) -> String {
     let mut svg = format!(
         r##"<svg xmlns="http://www.w3.org/2000/svg" width="{}" height="{}" viewBox="0 0 {} {}"><defs><pattern id="paper-grain" width="14" height="14" patternUnits="userSpaceOnUse"><path d="M0 2L14 0M0 10L14 8" stroke="#ffffff" stroke-opacity="0.18" stroke-width="1"/></pattern></defs><rect width="100%" height="100%" fill="{}"/><rect width="100%" height="100%" fill="url(#paper-grain)"/>"##,
         scene.canvas.width,
@@ -445,7 +569,16 @@ fn compose_svg(scene: &Scene) -> String {
         scene.canvas.height,
         scene.background
     );
-    for layer in &scene.layers {
+    svg.push_str(&transform_group(scene.map_transform));
+    for frame_layer in &scene.layers {
+        let layer = frame_layer.layer;
+        svg.push_str(&format!(
+            r#"<g opacity="{}" transform="translate({} {}) scale({})">"#,
+            frame_layer.transform.opacity,
+            frame_layer.transform.x,
+            frame_layer.transform.y,
+            frame_layer.transform.scale
+        ));
         let points = layer
             .points
             .iter()
@@ -487,12 +620,20 @@ fn compose_svg(scene: &Scene) -> String {
             }
             _ => {}
         }
+        svg.push_str("</g>");
     }
-    for label in &scene.labels {
+    for label in scene.labels {
         svg.push_str(&format!(r##"<text x="{}" y="{}" fill="#252525" font-family="sans-serif" font-size="16" font-weight="700">{}</text>"##, label.x, label.y, escape(&label.text)));
     }
-    svg.push_str("</svg>");
+    svg.push_str("</g></svg>");
     svg
+}
+
+fn transform_group(transform: FrameTransform) -> String {
+    format!(
+        r#"<g transform="translate({} {}) scale({})">"#,
+        transform.x, transform.y, transform.scale
+    )
 }
 
 fn escape(value: &str) -> String {
