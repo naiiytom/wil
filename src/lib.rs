@@ -1,4 +1,11 @@
-use std::{collections::HashSet, error::Error, fs, path::Path};
+use std::{
+    collections::HashSet,
+    error::Error,
+    fs,
+    io::ErrorKind,
+    path::{Path, PathBuf},
+    time::{SystemTime, UNIX_EPOCH},
+};
 
 use serde::Deserialize;
 
@@ -201,6 +208,80 @@ pub fn render_source_pack(pack: impl AsRef<Path>, output: impl AsRef<Path>) -> R
 pub fn render_sequence_frame(pack: impl AsRef<Path>, frame: usize) -> RenderResult<Vec<u8>> {
     let sequence = validate_sequence_pack(pack)?;
     render_sequence_frame_from_sequence(&sequence, frame)
+}
+
+pub fn render_sequence_pack(pack: impl AsRef<Path>, output: impl AsRef<Path>) -> RenderResult<()> {
+    let output = output.as_ref();
+    if output.exists() {
+        return Err("sequence render output already exists".into());
+    }
+
+    let sequence = validate_sequence_pack(pack)?;
+    let frame_count = (sequence.duration_seconds * f64::from(sequence.fps)) as usize;
+    let temporary = temporary_output_directory(output)?;
+    let result = (|| {
+        for frame in 0..frame_count {
+            fs::write(
+                temporary.join(format!("frame-{frame:06}.png")),
+                render_sequence_frame_from_sequence(&sequence, frame)?,
+            )?;
+        }
+        fs::write(
+            temporary.join("render-manifest.yaml"),
+            render_manifest(&sequence, frame_count),
+        )?;
+        Ok(())
+    })();
+    if let Err(error) = result {
+        fs::remove_dir_all(&temporary)?;
+        return Err(error);
+    }
+    if let Err(error) = fs::rename(&temporary, output) {
+        fs::remove_dir_all(&temporary)?;
+        return Err(error.into());
+    }
+    Ok(())
+}
+
+fn temporary_output_directory(output: &Path) -> RenderResult<PathBuf> {
+    let parent = output
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."));
+    let name = output
+        .file_name()
+        .ok_or("sequence render output needs a directory name")?
+        .to_string_lossy();
+    let nonce = SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos();
+    for attempt in 0..100 {
+        let temporary = parent.join(format!(
+            ".{name}.rendering-{}-{nonce}-{attempt}",
+            std::process::id()
+        ));
+        match fs::create_dir(&temporary) {
+            Ok(()) => return Ok(temporary),
+            Err(error) if error.kind() == ErrorKind::AlreadyExists => continue,
+            Err(error) => return Err(error.into()),
+        }
+    }
+    Err("could not create a unique sequence render directory".into())
+}
+
+fn render_manifest(sequence: &SequencePack, frame_count: usize) -> String {
+    let mut manifest = format!(
+        "title: {:?}\nfps: {}\nduration_seconds: {}\nframe_count: {frame_count}\nframe_pattern: frame-%06d.png\nscenes:\n",
+        sequence.title, sequence.fps, sequence.duration_seconds
+    );
+    for scene in &sequence.scenes {
+        manifest.push_str(&format!(
+            "  - id: {:?}\n    start: {}\n    end: {}\n",
+            scene.id, scene.start, scene.end
+        ));
+    }
+    manifest.push_str(
+        "attribution_card: \"Geographic features are source-backed; timing is illustrative.\"\n",
+    );
+    manifest
 }
 
 fn render_sequence_frame_from_sequence(

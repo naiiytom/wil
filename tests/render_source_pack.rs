@@ -7,7 +7,8 @@ use std::{
 };
 
 use world_in_layers::{
-    NumberKeyframe, interpolate, render_sequence_frame, render_source_pack, validate_sequence_pack,
+    NumberKeyframe, interpolate, render_sequence_frame, render_sequence_pack, render_source_pack,
+    validate_sequence_pack,
 };
 
 fn temporary_pack() -> PathBuf {
@@ -133,6 +134,34 @@ fn temporary_transition_pack() -> PathBuf {
   scale: [{at: 0.0, value: 1.0}, {at: 2.0, value: 1.1}]
 "#,
     )
+}
+
+#[test]
+fn renders_all_sequence_frames_and_a_manifest() {
+    let pack = temporary_animated_pack();
+    let output = pack.join("frames");
+
+    render_sequence_pack(&pack, &output).unwrap();
+
+    assert!(output.join("frame-000000.png").is_file());
+    assert!(output.join("frame-000001.png").is_file());
+    assert!(output.join("render-manifest.yaml").is_file());
+    let manifest = fs::read_to_string(output.join("render-manifest.yaml")).unwrap();
+    assert!(manifest.contains("Animated Bangkok"));
+    assert!(manifest.contains("frame_count: 4"));
+    assert!(manifest.contains("frame_pattern: frame-%06d.png"));
+    assert!(manifest.contains("Geographic features are source-backed; timing is illustrative."));
+    fs::remove_dir_all(pack).unwrap();
+}
+
+#[test]
+fn invalid_sequence_creates_no_output_directory() {
+    let pack = temporary_sequence_pack("fps: 0\n");
+    let output = pack.join("frames");
+
+    assert!(render_sequence_pack(&pack, &output).is_err());
+    assert!(!output.exists());
+    fs::remove_dir_all(pack).unwrap();
 }
 
 #[test]
