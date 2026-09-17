@@ -165,6 +165,21 @@ fn renders_a_valid_frame_during_a_map_transition() {
 }
 
 #[test]
+fn rejects_duplicate_animation_target_layers() {
+    let pack = temporary_sequence_pack(
+        r#"animations:
+  - layer: terrain
+    opacity: [{at: 0.0, value: 0.0}]
+  - layer: terrain
+    scale: [{at: 0.0, value: 1.0}]
+"#,
+    );
+    let error = validate_sequence_pack(&pack).unwrap_err();
+    assert!(error.to_string().contains("animation target layers"));
+    fs::remove_dir_all(pack).unwrap();
+}
+
+#[test]
 fn rejects_unknown_sequence_fields_before_output_exists() {
     let pack = temporary_sequence_pack("unknown: value\n");
     let error = validate_sequence_pack(&pack).unwrap_err();

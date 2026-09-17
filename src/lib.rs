@@ -462,9 +462,13 @@ fn validate_sequence(sequence: &SequencePack, sources: &Sources) -> RenderResult
         return Err("sequence Scenes must span zero through duration_seconds".into());
     }
 
+    let mut animation_layers = HashSet::new();
     for animation in &sequence.animations {
         if !layer_ids.contains(animation.layer.as_str()) {
             return Err(format!("animation references unknown layer '{}'", animation.layer).into());
+        }
+        if !animation_layers.insert(animation.layer.as_str()) {
+            return Err("animation target layers must be unique".into());
         }
         validate_keyframes(&animation.opacity, sequence.duration_seconds, "opacity")?;
         validate_keyframes(
