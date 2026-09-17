@@ -434,3 +434,20 @@ fn cli_renders_to_the_requested_path() {
     );
     fs::remove_dir_all(pack).unwrap();
 }
+
+#[test]
+fn cli_renders_a_sequence_to_the_requested_directory() {
+    let pack = temporary_animated_pack();
+    let output = pack.join("frames");
+    let status = Command::new(env!("CARGO_BIN_EXE_world-in-layers"))
+        .args([
+            "render-sequence",
+            pack.to_str().unwrap(),
+            output.to_str().unwrap(),
+        ])
+        .status()
+        .unwrap();
+    assert!(status.success());
+    assert!(output.join("render-manifest.yaml").is_file());
+    fs::remove_dir_all(pack).unwrap();
+}
