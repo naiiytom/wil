@@ -6,7 +6,10 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
-use world_in_layers::render_source_pack;
+use world_in_layers::{
+    NumberKeyframe, interpolate, render_sequence_frame, render_sequence_pack, render_source_pack,
+    validate_sequence_pack,
+};
 
 fn temporary_pack() -> PathBuf {
     let path = std::env::temp_dir().join(format!(
@@ -63,6 +66,292 @@ sources:
 "#,
     )
     .unwrap();
+}
+
+fn temporary_sequence_pack(extra: &str) -> PathBuf {
+    let pack = temporary_pack();
+    fs::write(
+        pack.join("sequence.yaml"),
+        format!(
+            r##"
+title: Animated Bangkok
+canvas:
+  width: 320
+  height: 180
+bounds: [100.0, 13.0, 101.0, 14.0]
+background: "#edf0e7"
+fps: 2
+duration_seconds: 2.0
+layers:
+  - id: terrain
+    kind: polygon
+    fill: "#cbbf92"
+    points: [[0, 180], [0, 0], [320, 0], [320, 180]]
+    sources: [basin]
+labels: []
+scenes:
+  - id: rainfall
+    start: 0.0
+    end: 2.0
+{extra}"##
+        ),
+    )
+    .unwrap();
+    fs::write(
+        pack.join("sources.yaml"),
+        r#"
+sources:
+  - id: basin
+    title: Chao Phraya basin reference
+    url: https://example.com/basin
+    license: ODbL-1.0
+    retrieved: 2026-09-16
+"#,
+    )
+    .unwrap();
+    pack
+}
+
+fn keyframe(at: f64, value: f64) -> NumberKeyframe {
+    NumberKeyframe { at, value }
+}
+
+fn temporary_animated_pack() -> PathBuf {
+    temporary_sequence_pack(
+        r#"animations:
+  - layer: terrain
+    opacity: [{at: 0.0, value: 0.0}, {at: 2.0, value: 1.0}]
+"#,
+    )
+}
+
+fn temporary_transition_pack() -> PathBuf {
+    temporary_sequence_pack(
+        r#"map_transition:
+  translate:
+    x: [{at: 0.0, value: 0.0}, {at: 2.0, value: 8.0}]
+    y: [{at: 0.0, value: 0.0}, {at: 2.0, value: 4.0}]
+  scale: [{at: 0.0, value: 1.0}, {at: 2.0, value: 1.1}]
+"#,
+    )
+}
+
+#[test]
+fn renders_all_sequence_frames_and_a_manifest() {
+    let pack = temporary_animated_pack();
+    let output = pack.join("frames");
+
+    render_sequence_pack(&pack, &output).unwrap();
+
+    assert!(output.join("frame-000000.png").is_file());
+    assert!(output.join("frame-000001.png").is_file());
+    assert!(output.join("render-manifest.yaml").is_file());
+    let manifest = fs::read_to_string(output.join("render-manifest.yaml")).unwrap();
+    assert!(manifest.contains("Animated Bangkok"));
+    assert!(manifest.contains("frame_count: 4"));
+    assert!(manifest.contains("frame_pattern: frame-%06d.png"));
+    assert!(manifest.contains("Geographic features are source-backed; timing is illustrative."));
+    fs::remove_dir_all(pack).unwrap();
+}
+
+#[test]
+fn invalid_sequence_creates_no_output_directory() {
+    let pack = temporary_sequence_pack("fps: 0\n");
+    let output = pack.join("frames");
+
+    assert!(render_sequence_pack(&pack, &output).is_err());
+    assert!(!output.exists());
+    fs::remove_dir_all(pack).unwrap();
+}
+
+#[test]
+fn renders_the_rounded_validated_frame_count() {
+    let pack = temporary_sequence_pack("");
+    let sequence = fs::read_to_string(pack.join("sequence.yaml"))
+        .unwrap()
+        .replace("fps: 2", "fps: 3")
+        .replace("duration_seconds: 2.0", "duration_seconds: 0.9999999999")
+        .replace("end: 2.0", "end: 0.9999999999");
+    fs::write(pack.join("sequence.yaml"), sequence).unwrap();
+    let output = pack.join("frames");
+
+    render_sequence_pack(&pack, &output).unwrap();
+
+    assert!(output.join("frame-000002.png").is_file());
+    fs::remove_dir_all(pack).unwrap();
+}
+
+#[test]
+fn interpolates_layer_opacity_at_the_frame_time() {
+    assert_eq!(
+        interpolate(&[keyframe(0.0, 0.0), keyframe(2.0, 1.0)], 1.0, 1.0),
+        0.5
+    );
+}
+
+#[test]
+fn sequence_frames_change_when_a_layer_fades_in() {
+    let pack = temporary_animated_pack();
+    assert_ne!(
+        render_sequence_frame(&pack, 0).unwrap(),
+        render_sequence_frame(&pack, 1).unwrap()
+    );
+    fs::remove_dir_all(pack).unwrap();
+}
+
+#[test]
+fn renders_a_sequence_layer_from_local_geojson() {
+    let pack = temporary_sequence_pack("");
+    let sequence = fs::read_to_string(pack.join("sequence.yaml"))
+        .unwrap()
+        .replace(
+            "    sources: [basin]\nlabels: []",
+            r##"    sources: [basin]
+  - id: river
+    kind: line
+    stroke: "#334455"
+    stroke_width: 10
+    geojson: data/river.geojson
+    sources: [basin]
+labels: []"##,
+        );
+    fs::write(pack.join("sequence.yaml"), sequence).unwrap();
+    fs::create_dir_all(pack.join("data")).unwrap();
+    fs::write(
+        pack.join("data/river.geojson"),
+        r#"{"type":"Feature","crs":{"type":"name","properties":{"name":"EPSG:4326"}},"geometry":{"type":"LineString","coordinates":[[100.1,13.9],[100.9,13.1]]},"properties":{}}"#,
+    )
+    .unwrap();
+
+    let png = render_sequence_frame(&pack, 0).unwrap();
+    let decoder = png::Decoder::new(BufReader::new(std::io::Cursor::new(png)));
+    let mut reader = decoder.read_info().unwrap();
+    let mut pixels = vec![0; reader.output_buffer_size().unwrap()];
+    reader.next_frame(&mut pixels).unwrap();
+    let river = &pixels[(90 * 320 + 160) * 4..(90 * 320 + 161) * 4];
+    assert!(river[0] < 100 && river[1] < 100 && river[2] < 100);
+    fs::remove_dir_all(pack).unwrap();
+}
+
+#[test]
+fn rejects_sequence_geojson_lacking_crs_without_assume_crs() {
+    let pack = temporary_sequence_pack("");
+    let sequence = fs::read_to_string(pack.join("sequence.yaml"))
+        .unwrap()
+        .replace(
+            "    sources: [basin]\nlabels: []",
+            r##"    sources: [basin]
+  - id: river
+    kind: line
+    stroke: "#334455"
+    stroke_width: 10
+    geojson: data/river.geojson
+    sources: [basin]
+labels: []"##,
+        );
+    fs::write(pack.join("sequence.yaml"), sequence).unwrap();
+    fs::create_dir_all(pack.join("data")).unwrap();
+    fs::write(
+        pack.join("data/river.geojson"),
+        r#"{"type":"Feature","geometry":{"type":"LineString","coordinates":[[100.1,13.9],[100.9,13.1]]},"properties":{}}"#,
+    )
+    .unwrap();
+
+    let error = validate_sequence_pack(&pack).unwrap_err();
+    assert!(error.to_string().contains("lacks CRS metadata"));
+    fs::remove_dir_all(pack).unwrap();
+}
+
+#[test]
+fn renders_an_attribution_card_only_in_its_scene() {
+    let pack = temporary_sequence_pack("");
+    let sequence = fs::read_to_string(pack.join("sequence.yaml"))
+        .unwrap()
+        .replace(
+            "labels: []",
+            r#"labels:
+  - text: "Attribution Card"
+    x: 50
+    y: 50
+    scene: final
+    sources: [basin]
+"#,
+        )
+        .replace(
+            "  - id: rainfall\n    start: 0.0\n    end: 2.0\n",
+            "  - id: rainfall\n    start: 0.0\n    end: 1.0\n  - id: final\n    start: 1.0\n    end: 2.0\n",
+        );
+    fs::write(pack.join("sequence.yaml"), sequence).unwrap();
+
+    assert_ne!(
+        render_sequence_frame(&pack, 0).unwrap(),
+        render_sequence_frame(&pack, 2).unwrap()
+    );
+    fs::remove_dir_all(pack).unwrap();
+}
+
+#[test]
+fn rejects_an_attribution_card_for_an_unknown_scene() {
+    let pack = temporary_sequence_pack("");
+    let sequence = fs::read_to_string(pack.join("sequence.yaml"))
+        .unwrap()
+        .replace(
+            "labels: []",
+            r#"labels:
+  - text: "Attribution Card"
+    x: 50
+    y: 50
+    scene: missing
+    sources: [basin]
+"#,
+        );
+    fs::write(pack.join("sequence.yaml"), sequence).unwrap();
+
+    let error = validate_sequence_pack(&pack).unwrap_err();
+    assert!(error.to_string().contains("unknown Scene 'missing'"));
+    fs::remove_dir_all(pack).unwrap();
+}
+
+#[test]
+fn renders_a_valid_frame_during_a_map_transition() {
+    let pack = temporary_transition_pack();
+    assert!(
+        render_sequence_frame(&pack, 1)
+            .unwrap()
+            .starts_with(&[137, 80, 78, 71, 13, 10, 26, 10])
+    );
+    fs::remove_dir_all(pack).unwrap();
+}
+
+#[test]
+fn rejects_duplicate_animation_target_layers() {
+    let pack = temporary_sequence_pack(
+        r#"animations:
+  - layer: terrain
+    opacity: [{at: 0.0, value: 0.0}]
+  - layer: terrain
+    scale: [{at: 0.0, value: 1.0}]
+"#,
+    );
+    let error = validate_sequence_pack(&pack).unwrap_err();
+    assert!(error.to_string().contains("animation target layers"));
+    fs::remove_dir_all(pack).unwrap();
+}
+
+#[test]
+fn rejects_unknown_sequence_fields_before_output_exists() {
+    let pack = temporary_sequence_pack("unknown: value\n");
+    let error = validate_sequence_pack(&pack).unwrap_err();
+    assert!(error.to_string().contains("unknown field"));
+    fs::remove_dir_all(pack).unwrap();
+}
+
+#[test]
+fn rejects_unknown_crs_without_an_explicit_assumption() {
+    let pack = temporary_sequence_pack("assume_crs: invalid\n");
+    let error = validate_sequence_pack(&pack).unwrap_err();
+    assert!(error.to_string().contains("EPSG:"));
+    fs::remove_dir_all(pack).unwrap();
 }
 
 #[test]
@@ -257,4 +546,26 @@ fn cli_renders_to_the_requested_path() {
             .starts_with(&[137, 80, 78, 71, 13, 10, 26, 10])
     );
     fs::remove_dir_all(pack).unwrap();
+}
+
+#[test]
+fn cli_renders_a_sequence_to_the_requested_directory() {
+    let pack = temporary_animated_pack();
+    let output = pack.join("frames");
+    let status = Command::new(env!("CARGO_BIN_EXE_world-in-layers"))
+        .args([
+            "render-sequence",
+            pack.to_str().unwrap(),
+            output.to_str().unwrap(),
+        ])
+        .status()
+        .unwrap();
+    assert!(status.success());
+    assert!(output.join("render-manifest.yaml").is_file());
+    fs::remove_dir_all(pack).unwrap();
+}
+
+#[test]
+fn bangkok_sequence_pack_validates() {
+    validate_sequence_pack("packs/bangkok-flat-delta").unwrap();
 }
