@@ -6,7 +6,7 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
-use world_in_layers::render_source_pack;
+use world_in_layers::{render_source_pack, validate_sequence_pack};
 
 fn temporary_pack() -> PathBuf {
     let path = std::env::temp_dir().join(format!(
@@ -63,6 +63,66 @@ sources:
 "#,
     )
     .unwrap();
+}
+
+fn temporary_sequence_pack(extra: &str) -> PathBuf {
+    let pack = temporary_pack();
+    fs::write(
+        pack.join("sequence.yaml"),
+        format!(
+            r##"
+title: Animated Bangkok
+canvas:
+  width: 320
+  height: 180
+bounds: [100.0, 13.0, 101.0, 14.0]
+background: "#edf0e7"
+fps: 2
+duration_seconds: 2.0
+layers:
+  - id: terrain
+    kind: polygon
+    fill: "#cbbf92"
+    points: [[0, 180], [0, 0], [320, 0], [320, 180]]
+    sources: [basin]
+labels: []
+scenes:
+  - id: rainfall
+    start: 0.0
+    end: 2.0
+{extra}"##
+        ),
+    )
+    .unwrap();
+    fs::write(
+        pack.join("sources.yaml"),
+        r#"
+sources:
+  - id: basin
+    title: Chao Phraya basin reference
+    url: https://example.com/basin
+    license: ODbL-1.0
+    retrieved: 2026-09-16
+"#,
+    )
+    .unwrap();
+    pack
+}
+
+#[test]
+fn rejects_unknown_sequence_fields_before_output_exists() {
+    let pack = temporary_sequence_pack("unknown: value\n");
+    let error = validate_sequence_pack(&pack).unwrap_err();
+    assert!(error.to_string().contains("unknown field"));
+    fs::remove_dir_all(pack).unwrap();
+}
+
+#[test]
+fn rejects_unknown_crs_without_an_explicit_assumption() {
+    let pack = temporary_sequence_pack("assume_crs: invalid\n");
+    let error = validate_sequence_pack(&pack).unwrap_err();
+    assert!(error.to_string().contains("EPSG:"));
+    fs::remove_dir_all(pack).unwrap();
 }
 
 #[test]
