@@ -19,3 +19,18 @@ sources:
     url: https://www.earthdata.nasa.gov/centers/lp-daac
     license: U.S. Government work (public domain)
     retrieved: 2026-09-16
+  - id: osm-coastline
+    title: OpenStreetMap Gulf of Thailand coastline data
+    url: https://www.openstreetmap.org/copyright
+    license: ODbL-1.0 (commercial use permitted with attribution and share-alike)
+    retrieved: 2026-09-17
+  - id: jrc-global-surface-water
+    title: JRC Global Surface Water Mapping Layers, v1.4
+    url: https://global-surface-water.appspot.com/download
+    license: Copernicus Programme data policy (free, full and open access, including commercial use)
+    retrieved: 2026-09-17
+  - id: wmo-urban-flood-guidance
+    title: WMO Integrated Flood Management tools
+    url: https://www.floodmanagement.info/
+    license: CC BY 3.0 IGO (commercial use permitted with attribution)
+    retrieved: 2026-09-17

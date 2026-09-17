@@ -451,3 +451,8 @@ fn cli_renders_a_sequence_to_the_requested_directory() {
     assert!(output.join("render-manifest.yaml").is_file());
     fs::remove_dir_all(pack).unwrap();
 }
+
+#[test]
+fn bangkok_sequence_pack_validates() {
+    validate_sequence_pack("packs/bangkok-flat-delta").unwrap();
+}

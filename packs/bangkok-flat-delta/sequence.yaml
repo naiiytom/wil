@@ -1,0 +1,97 @@
+title: Bangkok flood pathways
+canvas:
+  width: 3840
+  height: 2160
+bounds: [100.40, 13.45, 100.62, 13.78]
+background: "#e8dfc8"
+fps: 30
+duration_seconds: 12.0
+assume_crs: EPSG:4326
+layers:
+  - id: coastline
+    kind: line
+    stroke: "#4f8790"
+    stroke_width: 34
+    points: [[881, 1812], [923, 1808], [992, 1798], [1034, 1833], [1128, 1816], [1218, 1812], [1369, 1814], [1535, 1804], [1747, 1787], [1984, 1776], [2232, 1791], [2487, 1785], [2694, 1776], [2952, 1751], [3164, 1725], [3274, 1684], [3444, 1557]]
+    geojson: data/geometry/coastline.geojson
+    sources: [osm-coastline]
+  - id: chao-phraya
+    kind: line
+    stroke: "#2d6877"
+    stroke_width: 110
+    lift: 18
+    points: [[1604, 247], [1608, 249], [1625, 254], [1631, 256], [1633, 257]]
+    geojson: data/geometry/chao-phraya.geojson
+    sources: [osm-water]
+  - id: canals
+    kind: line
+    stroke: "#64949b"
+    stroke_width: 36
+    lift: 26
+    points: [[1971, 455], [1967, 455], [1964, 455], [1958, 455], [1950, 454], [1942, 453], [1935, 452], [1928, 452], [1905, 449], [1899, 448], [1883, 443]]
+    geojson: data/geometry/canals.geojson
+    sources: [osm-water]
+  - id: drainage-study-area
+    kind: polygon
+    fill: "#74a9ae"
+    stroke: "#4b7a83"
+    stroke_width: 12
+    lift: 10
+    points: [[1136, 294], [1485, 163], [2270, 229], [2620, 458], [2358, 818], [1745, 1014], [1222, 851], [1136, 294]]
+    geojson: data/geometry/flood-area.geojson
+    sources: [osm-bangkok-boundary]
+  - id: rainfall-treatment
+    kind: line
+    stroke: "#6f91bb"
+    stroke_width: 24
+    points: [[1260, 380], [1380, 580], [1500, 380], [1620, 580], [1740, 380], [1860, 580], [1980, 380], [2100, 580]]
+    sources: [wmo-urban-flood-guidance]
+  - id: river-back-pressure
+    kind: line
+    stroke: "#b95c43"
+    stroke_width: 144
+    points: [[1604, 247], [1608, 249], [1625, 254], [1631, 256], [1633, 257]]
+    sources: [osm-water]
+  - id: tide-blocked-outflow
+    kind: line
+    stroke: "#b95c43"
+    stroke_width: 58
+    points: [[881, 1812], [923, 1808], [992, 1798], [1034, 1833], [1128, 1816], [1218, 1812], [1369, 1814], [1535, 1804], [1747, 1787], [1984, 1776], [2232, 1791], [2487, 1785], [2694, 1776], [2952, 1751], [3164, 1725], [3274, 1684], [3444, 1557]]
+    sources: [osm-coastline]
+labels:
+  - text: CHAO PHRAYA RIVER
+    x: 1460
+    y: 180
+    sources: [osm-water]
+  - text: LOW-LYING DRAINAGE STUDY AREA
+    x: 1520
+    y: 940
+    sources: [osm-bangkok-boundary]
+  - text: Geographic features are source-backed; timing is illustrative.
+    x: 1040
+    y: 2060
+    sources: [wmo-urban-flood-guidance]
+scenes:
+  - id: rainfall-overload
+    start: 0.0
+    end: 4.0
+  - id: river-back-pressure
+    start: 4.0
+    end: 8.0
+  - id: tide-blocked-outflow
+    start: 8.0
+    end: 12.0
+animations:
+  - layer: rainfall-treatment
+    opacity: [{at: 0.0, value: 0.0}, {at: 0.5, value: 0.9}, {at: 4.0, value: 0.0}]
+  - layer: drainage-study-area
+    opacity: [{at: 0.0, value: 0.0}, {at: 3.5, value: 0.45}, {at: 8.0, value: 0.65}, {at: 12.0, value: 0.8}]
+  - layer: river-back-pressure
+    opacity: [{at: 0.0, value: 0.0}, {at: 4.0, value: 0.0}, {at: 4.5, value: 1.0}, {at: 12.0, value: 1.0}]
+  - layer: tide-blocked-outflow
+    opacity: [{at: 0.0, value: 0.0}, {at: 8.0, value: 0.0}, {at: 8.5, value: 1.0}, {at: 12.0, value: 1.0}]
+map_transition:
+  translate:
+    x: [{at: 0.0, value: 0.0}, {at: 4.0, value: 0.0}, {at: 8.0, value: -110.0}, {at: 12.0, value: -110.0}]
+    y: [{at: 0.0, value: 0.0}, {at: 12.0, value: 0.0}]
+  scale: [{at: 0.0, value: 1.0}, {at: 4.0, value: 1.0}, {at: 8.0, value: 1.06}, {at: 12.0, value: 1.06}]
