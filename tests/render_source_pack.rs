@@ -165,6 +165,23 @@ fn invalid_sequence_creates_no_output_directory() {
 }
 
 #[test]
+fn renders_the_rounded_validated_frame_count() {
+    let pack = temporary_sequence_pack("");
+    let sequence = fs::read_to_string(pack.join("sequence.yaml"))
+        .unwrap()
+        .replace("fps: 2", "fps: 3")
+        .replace("duration_seconds: 2.0", "duration_seconds: 0.9999999999")
+        .replace("end: 2.0", "end: 0.9999999999");
+    fs::write(pack.join("sequence.yaml"), sequence).unwrap();
+    let output = pack.join("frames");
+
+    render_sequence_pack(&pack, &output).unwrap();
+
+    assert!(output.join("frame-000002.png").is_file());
+    fs::remove_dir_all(pack).unwrap();
+}
+
+#[test]
 fn interpolates_layer_opacity_at_the_frame_time() {
     assert_eq!(
         interpolate(&[keyframe(0.0, 0.0), keyframe(2.0, 1.0)], 1.0, 1.0),

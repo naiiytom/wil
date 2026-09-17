@@ -217,7 +217,7 @@ pub fn render_sequence_pack(pack: impl AsRef<Path>, output: impl AsRef<Path>) ->
     }
 
     let sequence = validate_sequence_pack(pack)?;
-    let frame_count = (sequence.duration_seconds * f64::from(sequence.fps)) as usize;
+    let frame_count = sequence_frame_count(&sequence);
     let temporary = temporary_output_directory(output)?;
     let result = (|| {
         for frame in 0..frame_count {
@@ -233,11 +233,11 @@ pub fn render_sequence_pack(pack: impl AsRef<Path>, output: impl AsRef<Path>) ->
         Ok(())
     })();
     if let Err(error) = result {
-        fs::remove_dir_all(&temporary)?;
+        let _ = fs::remove_dir_all(&temporary);
         return Err(error);
     }
     if let Err(error) = fs::rename(&temporary, output) {
-        fs::remove_dir_all(&temporary)?;
+        let _ = fs::remove_dir_all(&temporary);
         return Err(error.into());
     }
     Ok(())
@@ -288,7 +288,7 @@ fn render_sequence_frame_from_sequence(
     sequence: &SequencePack,
     frame: usize,
 ) -> RenderResult<Vec<u8>> {
-    let frame_count = (sequence.duration_seconds * f64::from(sequence.fps)) as usize;
+    let frame_count = sequence_frame_count(sequence);
     if frame >= frame_count {
         return Err("sequence frame is outside the sequence duration".into());
     }
@@ -296,6 +296,10 @@ fn render_sequence_frame_from_sequence(
         sequence,
         frame as f64 / f64::from(sequence.fps),
     ))
+}
+
+fn sequence_frame_count(sequence: &SequencePack) -> usize {
+    (sequence.duration_seconds * f64::from(sequence.fps)).round() as usize
 }
 
 fn render_png(scene: FrameScene<'_>) -> RenderResult<Vec<u8>> {
