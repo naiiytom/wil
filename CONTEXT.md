@@ -20,6 +20,14 @@ _Avoid_: paper indorama, visual component, building block
 A shot-ready Paper Diorama that communicates one visual idea in an Episode.
 _Avoid_: montage, sequence
 
+**Scene Sequence**:
+An ordered set of Scenes that together explain one causal process within an Episode.
+_Avoid_: scene, montage
+
+**Map Transition**:
+A purposeful zoom or pan that preserves the same geographic features across Scenes in a Scene Sequence.
+_Avoid_: cut to a different map, location change
+
 **Layer**:
 A named visual part of a Scene that remains independently addressable for later animation.
 _Avoid_: flattened asset
@@ -32,9 +40,21 @@ _Avoid_: photorealistic, literal
 The collection of commercially usable geographic material, citations, and editorial values that grounds a Scene.
 _Avoid_: live data feed
 
+**Source Geometry**:
+Geographic shape data in a Source Pack, normalized to GeoJSON for rendering while retaining its source reference.
+_Avoid_: raw map data, drawing
+
 **Source Reference**:
 The source, license, and retrieval information for one dataset or factual claim group used by a Source Pack.
 _Avoid_: uncited source, general bibliography
+
+**Attribution Card**:
+A compact visual credit for the Source References behind a Scene Sequence.
+_Avoid_: bibliography, end card
+
+**Explanatory Timing**:
+Creator-authored animation timing that illustrates a source-backed causal process without representing a specific historical event.
+_Avoid_: simulation, live data playback
 
 **AI Material**:
 An AI-generated non-factual surface treatment used to give a Scene a paper-like physical quality.
