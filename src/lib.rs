@@ -76,22 +76,24 @@ struct Label {
     sources: Vec<String>,
 }
 
-#[derive(Deserialize)]
+#[derive(Debug, Clone, Deserialize, serde::Serialize)]
 #[serde(deny_unknown_fields)]
-struct Sources {
-    sources: Vec<SourceReference>,
+pub struct Sources {
+    pub sources: Vec<SourceReference>,
 }
 
-#[derive(Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, serde::Serialize)]
 #[serde(deny_unknown_fields)]
-struct SourceReference {
-    id: String,
-    title: String,
-    url: String,
-    license: String,
-    retrieved: String,
-    #[serde(default)]
-    assume_crs: Option<String>,
+pub struct SourceReference {
+    pub id: String,
+    pub title: String,
+    pub url: String,
+    pub license: String,
+    pub retrieved: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub category: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub assume_crs: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -101,8 +103,8 @@ pub struct SequencePack {
     canvas: Canvas,
     bounds: [f64; 4],
     background: String,
-    fps: u32,
-    duration_seconds: f64,
+    pub fps: u32,
+    pub duration_seconds: f64,
     layers: Vec<Layer>,
     #[serde(default)]
     labels: Vec<Label>,
@@ -115,6 +117,58 @@ pub struct SequencePack {
     map_transition: Option<MapTransition>,
     #[serde(default)]
     assume_crs: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, serde::Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct EpisodePack {
+    pub title: String,
+    pub episode_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub target_runtime_seconds: Option<f64>,
+    pub sequences: Vec<EpisodeSequenceEntry>,
+}
+
+#[derive(Debug, Clone, Deserialize, serde::Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct EpisodeSequenceEntry {
+    pub id: String,
+    pub pack: String,
+    pub section: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SourceCategoryGroup {
+    pub category: String,
+    pub sources: Vec<SourceReference>,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct EpisodeManifestSequence {
+    pub id: String,
+    pub pack: String,
+    pub section: String,
+    pub directory: String,
+    pub fps: u32,
+    pub duration_seconds: f64,
+    pub frame_count: usize,
+    pub frame_pattern: String,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct EpisodeManifest {
+    pub title: String,
+    pub episode_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub target_runtime_seconds: Option<f64>,
+    pub rendered_duration_seconds: f64,
+    pub total_frame_count: usize,
+    pub sequences: Vec<EpisodeManifestSequence>,
+    pub attribution_card: String,
+    pub sources: Vec<SourceCategoryGroup>,
 }
 
 #[derive(Debug, Deserialize, serde::Serialize)]
@@ -230,6 +284,14 @@ pub fn render_sequence_frame(pack: impl AsRef<Path>, frame: usize) -> RenderResu
 }
 
 pub fn render_sequence_pack(pack: impl AsRef<Path>, output: impl AsRef<Path>) -> RenderResult<()> {
+    render_sequence_pack_with_jobs(pack, output, None)
+}
+
+pub fn render_sequence_pack_with_jobs(
+    pack: impl AsRef<Path>,
+    output: impl AsRef<Path>,
+    jobs: Option<usize>,
+) -> RenderResult<()> {
     let output = output.as_ref();
     if output.exists() {
         return Err("sequence render output already exists".into());
@@ -238,28 +300,277 @@ pub fn render_sequence_pack(pack: impl AsRef<Path>, output: impl AsRef<Path>) ->
     let sequence = validate_sequence_pack(pack)?;
     let frame_count = sequence_frame_count(&sequence);
     let temporary = temporary_output_directory(output)?;
-    let result = (|| {
-        for frame in 0..frame_count {
+    let fontdb = system_fontdb();
+
+    let render_frames = || {
+        use rayon::prelude::*;
+        (0..frame_count).into_par_iter().try_for_each(|frame| {
+            let frame_bytes = render_sequence_frame_from_sequence_with_db(&sequence, frame, &fontdb)
+                .map_err(|e| e.to_string())?;
             fs::write(
                 temporary.join(format!("frame-{frame:06}.png")),
-                render_sequence_frame_from_sequence(&sequence, frame)?,
-            )?;
+                frame_bytes,
+            )
+            .map_err(|e| e.to_string())?;
+            Ok::<(), String>(())
+        })
+    };
+
+    let result: Result<(), Box<dyn Error>> = match jobs {
+        Some(threads) => {
+            let pool = rayon::ThreadPoolBuilder::new()
+                .num_threads(threads)
+                .build()?;
+            pool.install(render_frames).map_err(|e| e.into())
         }
-        fs::write(
-            temporary.join("render-manifest.yaml"),
-            render_manifest(&sequence, frame_count)?,
-        )?;
-        Ok(())
-    })();
+        None => render_frames().map_err(|e| e.into()),
+    };
+
     if let Err(error) = result {
         let _ = fs::remove_dir_all(&temporary);
         return Err(error);
     }
+
+    if let Err(error) = fs::write(
+        temporary.join("render-manifest.yaml"),
+        render_manifest(&sequence, frame_count)?,
+    ) {
+        let _ = fs::remove_dir_all(&temporary);
+        return Err(error.into());
+    }
+
     if let Err(error) = fs::rename(&temporary, output) {
         let _ = fs::remove_dir_all(&temporary);
         return Err(error.into());
     }
     Ok(())
+}
+
+pub fn load_sources(pack: impl AsRef<Path>) -> RenderResult<Sources> {
+    let pack = pack.as_ref();
+    let sources_file = pack.join("sources.yaml");
+    if !sources_file.exists() {
+        return Err(format!("missing sources.yaml in {}", pack.display()).into());
+    }
+    let content = fs::read_to_string(sources_file)?;
+    let sources: Sources = yaml_serde::from_str(&content)?;
+    Ok(sources)
+}
+
+pub fn validate_episode_pack(pack: impl AsRef<Path>) -> RenderResult<EpisodePack> {
+    let pack = pack.as_ref();
+    let episode_file = pack.join("episode.yaml");
+    if !episode_file.exists() {
+        return Err(format!("missing episode.yaml in {}", pack.display()).into());
+    }
+    let content = fs::read_to_string(&episode_file)?;
+    let episode: EpisodePack = yaml_serde::from_str(&content)?;
+
+    if episode.title.trim().is_empty() {
+        return Err("episode title cannot be empty".into());
+    }
+    if episode.episode_id.trim().is_empty() {
+        return Err("episode_id cannot be empty".into());
+    }
+    if episode.sequences.is_empty() {
+        return Err("episode must declare at least one sequence".into());
+    }
+
+    let mut seen_seq_ids = std::collections::HashSet::new();
+    let mut all_sources: std::collections::HashMap<String, (SourceReference, String)> =
+        std::collections::HashMap::new();
+
+    let shared_sources_file = pack.join("_shared").join("sources.yaml");
+    if shared_sources_file.exists() {
+        let shared_content = fs::read_to_string(&shared_sources_file)?;
+        let shared_sources: Sources = yaml_serde::from_str(&shared_content)?;
+        for source in shared_sources.sources {
+            all_sources.insert(source.id.clone(), (source, "_shared".to_string()));
+        }
+    }
+
+    for entry in &episode.sequences {
+        if entry.id.trim().is_empty() {
+            return Err("sequence entry id cannot be empty".into());
+        }
+        if !seen_seq_ids.insert(&entry.id) {
+            return Err(format!("duplicate sequence id '{}' in episode", entry.id).into());
+        }
+        let child_pack = pack.join(&entry.pack);
+        if !child_pack.is_dir() {
+            return Err(format!("sequence pack directory '{}' not found", child_pack.display()).into());
+        }
+
+        validate_sequence_pack(&child_pack)?;
+
+        let child_sources = load_sources(&child_pack)?;
+        for source in child_sources.sources {
+            if let Some((existing, prev_pack)) = all_sources.get(&source.id) {
+                if existing.title != source.title
+                    || existing.url != source.url
+                    || existing.license != source.license
+                    || existing.assume_crs != source.assume_crs
+                {
+                    return Err(format!(
+                        "conflicting source definition for '{}' between '{}' and '{}'",
+                        source.id, prev_pack, entry.pack
+                    ).into());
+                }
+            } else {
+                all_sources.insert(source.id.clone(), (source, entry.pack.clone()));
+            }
+        }
+    }
+
+    Ok(episode)
+}
+
+pub fn render_episode_pack(
+    pack: impl AsRef<Path>,
+    output: impl AsRef<Path>,
+    jobs: Option<usize>,
+) -> RenderResult<()> {
+    let pack = pack.as_ref();
+    let output = output.as_ref();
+    if output.exists() {
+        return Err("episode render output already exists".into());
+    }
+
+    let episode = validate_episode_pack(pack)?;
+    let temporary = temporary_output_directory(output)?;
+
+    let result = (|| -> RenderResult<()> {
+        let mut manifest_sequences = Vec::new();
+        let mut total_frame_count = 0;
+        let mut rendered_duration_seconds = 0.0;
+        let mut all_unique_sources: std::collections::BTreeMap<String, SourceReference> =
+            std::collections::BTreeMap::new();
+
+        for entry in &episode.sequences {
+            let child_pack_dir = pack.join(&entry.pack);
+            let seq_output_dir = temporary.join(&entry.pack);
+
+            render_sequence_pack_with_jobs(&child_pack_dir, &seq_output_dir, jobs)?;
+
+            let child_seq = validate_sequence_pack(&child_pack_dir)?;
+            let child_frame_count = sequence_frame_count(&child_seq);
+            total_frame_count += child_frame_count;
+            rendered_duration_seconds += child_seq.duration_seconds;
+
+            let child_sources = load_sources(&child_pack_dir)?;
+            for s in child_sources.sources {
+                all_unique_sources.entry(s.id.clone()).or_insert(s);
+            }
+
+            manifest_sequences.push(EpisodeManifestSequence {
+                id: entry.id.clone(),
+                pack: entry.pack.clone(),
+                section: entry.section.clone(),
+                directory: entry.pack.clone(),
+                fps: child_seq.fps,
+                duration_seconds: child_seq.duration_seconds,
+                frame_count: child_frame_count,
+                frame_pattern: "frame-%06d.png".to_string(),
+            });
+        }
+
+        if let Ok(shared_sources) = load_sources(pack.join("_shared")) {
+            for s in shared_sources.sources {
+                all_unique_sources.entry(s.id.clone()).or_insert(s);
+            }
+        }
+
+        let mut grouped: std::collections::BTreeMap<String, Vec<SourceReference>> =
+            std::collections::BTreeMap::new();
+        for (_, source) in all_unique_sources {
+            let cat = source_category(&source);
+            grouped.entry(cat).or_default().push(source);
+        }
+
+        let standard_order = [
+            "Geographic & Elevation Baselines",
+            "Historical & Morphological Surveys",
+            "Hydrological & Infrastructure Records",
+        ];
+        let mut source_groups = Vec::new();
+        for cat in standard_order {
+            if let Some(sources) = grouped.remove(cat) {
+                source_groups.push(SourceCategoryGroup {
+                    category: cat.to_string(),
+                    sources,
+                });
+            }
+        }
+        for (category, sources) in grouped {
+            source_groups.push(SourceCategoryGroup { category, sources });
+        }
+
+        let episode_manifest = EpisodeManifest {
+            title: episode.title.clone(),
+            episode_id: episode.episode_id.clone(),
+            target_runtime_seconds: episode.target_runtime_seconds,
+            rendered_duration_seconds,
+            total_frame_count,
+            sequences: manifest_sequences,
+            attribution_card: "Geographic features are source-backed; timing is illustrative.".to_string(),
+            sources: source_groups,
+        };
+
+        fs::write(
+            temporary.join("episode-manifest.yaml"),
+            yaml_serde::to_string(&episode_manifest)?,
+        )?;
+
+        Ok(())
+    })();
+
+    if let Err(error) = result {
+        let _ = fs::remove_dir_all(&temporary);
+        return Err(error);
+    }
+
+    if let Err(error) = fs::rename(&temporary, output) {
+        let _ = fs::remove_dir_all(&temporary);
+        return Err(error.into());
+    }
+
+    Ok(())
+}
+
+fn source_category(source: &SourceReference) -> String {
+    if let Some(cat) = &source.category {
+        return cat.clone();
+    }
+    let id_lower = source.id.to_lowercase();
+    if id_lower.contains("dem")
+        || id_lower.contains("elevation")
+        || id_lower.contains("osm")
+        || id_lower.contains("hydro")
+        || id_lower.contains("coastline")
+    {
+        "Geographic & Elevation Baselines".to_string()
+    } else if id_lower.contains("rtsd")
+        || id_lower.contains("rsd")
+        || id_lower.contains("bradley")
+        || id_lower.contains("ghsl")
+        || id_lower.contains("historic")
+        || id_lower.contains("ams")
+        || id_lower.contains("loftus")
+    {
+        "Historical & Morphological Surveys".to_string()
+    } else if id_lower.contains("bma")
+        || id_lower.contains("jica")
+        || id_lower.contains("wmo")
+        || id_lower.contains("chula")
+        || id_lower.contains("drainage")
+        || id_lower.contains("flood")
+        || id_lower.contains("groundwater")
+        || id_lower.contains("subsidence")
+    {
+        "Hydrological & Infrastructure Records".to_string()
+    } else {
+        "General Sources".to_string()
+    }
 }
 
 fn temporary_output_directory(output: &Path) -> RenderResult<PathBuf> {
@@ -310,18 +621,35 @@ fn render_manifest(sequence: &SequencePack, frame_count: usize) -> RenderResult<
     Ok(yaml_serde::to_string(&manifest)?)
 }
 
+fn system_fontdb() -> std::sync::Arc<resvg::usvg::fontdb::Database> {
+    let mut fontdb = resvg::usvg::fontdb::Database::new();
+    fontdb.load_system_fonts();
+    std::sync::Arc::new(fontdb)
+}
+
 fn render_sequence_frame_from_sequence(
     sequence: &SequencePack,
     frame: usize,
+) -> RenderResult<Vec<u8>> {
+    render_sequence_frame_from_sequence_with_db(sequence, frame, &system_fontdb())
+}
+
+fn render_sequence_frame_from_sequence_with_db(
+    sequence: &SequencePack,
+    frame: usize,
+    fontdb: &std::sync::Arc<resvg::usvg::fontdb::Database>,
 ) -> RenderResult<Vec<u8>> {
     let frame_count = sequence_frame_count(sequence);
     if frame >= frame_count {
         return Err("sequence frame is outside the sequence duration".into());
     }
-    render_png(frame_scene(
-        sequence,
-        frame as f64 / f64::from(sequence.fps),
-    ))
+    render_png_with_db(
+        frame_scene(
+            sequence,
+            frame as f64 / f64::from(sequence.fps),
+        ),
+        fontdb,
+    )
 }
 
 fn sequence_frame_count(sequence: &SequencePack) -> usize {
@@ -329,9 +657,18 @@ fn sequence_frame_count(sequence: &SequencePack) -> usize {
 }
 
 fn render_png(scene: FrameScene<'_>) -> RenderResult<Vec<u8>> {
+    render_png_with_db(scene, &system_fontdb())
+}
+
+fn render_png_with_db(
+    scene: FrameScene<'_>,
+    fontdb: &std::sync::Arc<resvg::usvg::fontdb::Database>,
+) -> RenderResult<Vec<u8>> {
     let svg = compose_svg(&scene);
-    let mut options = resvg::usvg::Options::default();
-    options.fontdb_mut().load_system_fonts();
+    let options = resvg::usvg::Options {
+        fontdb: std::sync::Arc::clone(fontdb),
+        ..Default::default()
+    };
     let tree = resvg::usvg::Tree::from_str(&svg, &options)?;
     let mut pixmap = resvg::tiny_skia::Pixmap::new(scene.canvas.width, scene.canvas.height)
         .ok_or("invalid canvas size")?;
@@ -555,45 +892,43 @@ fn resolve_geojson_layers(
 fn validate_geojson_crs(value: &yaml_serde::Value, path: &str) -> RenderResult<()> {
     if let yaml_serde::Value::Mapping(map) = value {
         for (k, v) in map {
-            if let yaml_serde::Value::String(k_str) = k {
-                if k_str == "crs" {
-                    let crs_name = match v {
-                        yaml_serde::Value::String(s) => Some(s.as_str()),
-                        yaml_serde::Value::Mapping(crs_map) => {
-                            crs_map.iter().find_map(|(ck, cv)| {
-                                if let (
-                                    yaml_serde::Value::String(ck_str),
-                                    yaml_serde::Value::Mapping(props),
-                                ) = (ck, cv)
-                                {
-                                    if ck_str == "properties" {
-                                        return props.iter().find_map(|(pk, pv)| {
-                                            if let (
-                                                yaml_serde::Value::String(pk_str),
-                                                yaml_serde::Value::String(pv_str),
-                                            ) = (pk, pv)
-                                            {
-                                                if pk_str == "name" {
-                                                    return Some(pv_str.as_str());
-                                                }
-                                            }
-                                            None
-                                        });
+            if let yaml_serde::Value::String(k_str) = k
+                && k_str == "crs"
+            {
+                let crs_name = match v {
+                    yaml_serde::Value::String(s) => Some(s.as_str()),
+                    yaml_serde::Value::Mapping(crs_map) => {
+                        crs_map.iter().find_map(|(ck, cv)| {
+                            if let (
+                                yaml_serde::Value::String(ck_str),
+                                yaml_serde::Value::Mapping(props),
+                            ) = (ck, cv)
+                                && ck_str == "properties"
+                            {
+                                return props.iter().find_map(|(pk, pv)| {
+                                    if let (
+                                        yaml_serde::Value::String(pk_str),
+                                        yaml_serde::Value::String(pv_str),
+                                    ) = (pk, pv)
+                                        && pk_str == "name"
+                                    {
+                                        return Some(pv_str.as_str());
                                     }
-                                }
-                                None
-                            })
-                        }
-                        _ => None,
-                    };
-                    if let Some(name) = crs_name {
-                        if !matches!(
-                            name,
-                            "EPSG:4326" | "urn:ogc:def:crs:OGC:1.3:CRS84" | "CRS84"
-                        ) {
-                            return Err(format!("Source input '{path}' declares unsupported CRS '{name}'; only WGS 84 (EPSG:4326) is accepted").into());
-                        }
+                                    None
+                                });
+                            }
+                            None
+                        })
                     }
+                    _ => None,
+                };
+                if let Some(name) = crs_name
+                    && !matches!(
+                        name,
+                        "EPSG:4326" | "urn:ogc:def:crs:OGC:1.3:CRS84" | "CRS84"
+                    )
+                {
+                    return Err(format!("Source input '{path}' declares unsupported CRS '{name}'; only WGS 84 (EPSG:4326) is accepted").into());
                 }
             }
         }
@@ -718,12 +1053,12 @@ fn validate_sequence(sequence: &SequencePack, sources: &Sources) -> RenderResult
         return Err("sequence Scenes must span zero through duration_seconds".into());
     }
     for label in &sequence.labels {
-        if let Some(scene) = &label.scene {
-            if !scene_ids.contains(scene.as_str()) {
-                return Err(
-                    format!("Label '{}' references unknown Scene '{scene}'", label.text).into(),
-                );
-            }
+        if let Some(scene) = &label.scene
+            && !scene_ids.contains(scene.as_str())
+        {
+            return Err(
+                format!("Label '{}' references unknown Scene '{scene}'", label.text).into(),
+            );
         }
     }
 

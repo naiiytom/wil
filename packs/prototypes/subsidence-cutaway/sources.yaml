@@ -1,0 +1,13 @@
+sources:
+  - id: chula-subsidence-study-2020
+    title: Land Subsidence and Flood Inundation in Bangkok and its Vicinity
+    url: https://chulalongkorn.digital.repository/bangkok-subsidence
+    license: CC-BY-4.0
+    retrieved: 2026-09-19
+    assume_crs: EPSG:4326
+  - id: jica-bangkok-groundwater-1999
+    title: The Study on Management of Groundwater and Land Subsidence in the Bangkok Metropolitan Area
+    url: https://openjicareport.jica.go.jp/pdf/11547486.pdf
+    license: Open Public Domain (Government/JICA report)
+    retrieved: 2026-09-19
+    assume_crs: EPSG:4326

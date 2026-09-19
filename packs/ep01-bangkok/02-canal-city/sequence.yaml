@@ -1,0 +1,78 @@
+title: "Historical Water City & Urban Paving"
+canvas:
+  width: 3840
+  height: 2160
+bounds: [100.45, 13.70, 100.58, 13.78]
+background: "#e8dfc8"
+fps: 10
+duration_seconds: 4.0
+assume_crs: EPSG:4326
+layers:
+  - id: chao-phraya
+    kind: line
+    stroke: "#2d6877"
+    stroke_width: 140
+    lift: 16
+    geojson: ../_shared/data/geometry/chao-phraya.geojson
+    sources: [osm-water]
+  - id: modern-canals
+    kind: line
+    stroke: "#64949b"
+    stroke_width: 28
+    lift: 12
+    geojson: ../_shared/data/geometry/canals.geojson
+    sources: [osm-water]
+  - id: historical-canals
+    kind: line
+    stroke: "#0284c7"
+    stroke_width: 36
+    lift: 20
+    geojson: data/geometry/historical-canals.geojson
+    sources: [rtsd-bangkok-1896, bradley-bangkok-1870]
+  - id: urban-paving-grid
+    kind: polygon
+    fill: "#94a3b8"
+    stroke: "#64748b"
+    stroke_width: 6
+    lift: 8
+    points:
+      - [800, 400]
+      - [3200, 400]
+      - [3200, 1800]
+      - [800, 1800]
+    sources: [jrc-ghsl-builts]
+labels:
+  - text: "1896 WATER CITY: 1,600+ CONNECTED KHLONGS"
+    x: 1200
+    y: 280
+    scene: historical-water-city
+    sources: [rtsd-bangkok-1896]
+  - text: "20TH CENTURY: CANALS PAVED FOR ROADS (SILOM, RAMA IV)"
+    x: 1000
+    y: 280
+    scene: paved-urban-grid
+    sources: [jrc-ghsl-builts]
+scenes:
+  - id: historical-water-city
+    start: 0.0
+    end: 2.0
+  - id: paved-urban-grid
+    start: 2.0
+    end: 4.0
+animations:
+  - layer: urban-paving-grid
+    opacity:
+      - at: 0.0
+        value: 0.0
+      - at: 2.0
+        value: 0.0
+      - at: 4.0
+        value: 0.75
+  - layer: historical-canals
+    opacity:
+      - at: 0.0
+        value: 1.0
+      - at: 2.0
+        value: 1.0
+      - at: 4.0
+        value: 0.35

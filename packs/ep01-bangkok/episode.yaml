@@ -1,0 +1,19 @@
+title: "Why Bangkok Keeps Flooding"
+episode_id: "ep01-bangkok"
+target_runtime_seconds: 480.0
+sequences:
+  - id: delta-exposure
+    pack: 01-delta-exposure
+    section: "0:00-0:35 Cold Open: Delta Elevation & Flood Exposure"
+  - id: canal-city
+    pack: 02-canal-city
+    section: "0:35-3:00 Historical Water City & Urban Paving"
+  - id: subsidence-cutaway
+    pack: 03-subsidence-cutaway
+    section: "3:00-4:30 Subterranean Clay Compaction"
+  - id: three-pressures
+    pack: 04-three-pressures
+    section: "4:30-5:45 Rain, River, and Tide"
+  - id: drainage-capacity
+    pack: 05-drainage-capacity
+    section: "5:45-7:35 Drainage Capacity Limits"
