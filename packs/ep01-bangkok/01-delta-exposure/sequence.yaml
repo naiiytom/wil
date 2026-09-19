@@ -1,0 +1,63 @@
+title: "Delta Elevation & Flood Exposure"
+canvas:
+  width: 3840
+  height: 2160
+bounds: [100.40, 13.45, 100.62, 13.78]
+background: "#e8dfc8"
+fps: 10
+duration_seconds: 4.0
+assume_crs: EPSG:4326
+layers:
+  - id: low-elevation-zone
+    kind: polygon
+    fill: "#c8b46e"
+    stroke: "#a89050"
+    stroke_width: 8
+    lift: 6
+    geojson: ../_shared/data/geometry/low-elevation-zone.geojson
+    sources: [copernicus-dem, srtm-elevation]
+  - id: bma-boundary
+    kind: polygon
+    fill: "#dfd6be"
+    stroke: "#78716c"
+    stroke_width: 6
+    lift: 4
+    geojson: ../_shared/data/geometry/bangkok-boundary.geojson
+    sources: [osm-bangkok-boundary]
+  - id: coastline
+    kind: line
+    stroke: "#4f8790"
+    stroke_width: 34
+    lift: 10
+    geojson: ../_shared/data/geometry/coastline.geojson
+    sources: [osm-coastline]
+  - id: chao-phraya
+    kind: line
+    stroke: "#2d6877"
+    stroke_width: 110
+    lift: 18
+    geojson: ../_shared/data/geometry/chao-phraya.geojson
+    sources: [osm-water]
+labels:
+  - text: "LOW-ELEVATION ALLUVIAL DELTA (<1.5m)"
+    x: 1800
+    y: 840
+    sources: [copernicus-dem]
+  - text: "GULF OF THAILAND TIDAL EXPOSURE"
+    x: 1950
+    y: 1900
+    sources: [osm-coastline]
+scenes:
+  - id: elevation-baseline
+    start: 0.0
+    end: 2.0
+  - id: coastal-exposure
+    start: 2.0
+    end: 4.0
+animations:
+  - layer: low-elevation-zone
+    opacity:
+      - at: 0.0
+        value: 0.4
+      - at: 2.0
+        value: 1.0

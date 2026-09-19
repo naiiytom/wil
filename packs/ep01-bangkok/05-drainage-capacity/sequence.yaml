@@ -1,0 +1,130 @@
+title: "Drainage Capacity Limits & Attribution"
+canvas:
+  width: 3840
+  height: 2160
+bounds: [100.40, 13.45, 100.62, 13.78]
+background: "#e8dfc8"
+fps: 10
+duration_seconds: 4.0
+assume_crs: EPSG:4326
+layers:
+  - id: coastline
+    kind: line
+    stroke: "#4f8790"
+    stroke_width: 34
+    lift: 6
+    geojson: ../_shared/data/geometry/coastline.geojson
+    sources: [osm-coastline]
+  - id: chao-phraya
+    kind: line
+    stroke: "#2d6877"
+    stroke_width: 110
+    lift: 10
+    geojson: ../_shared/data/geometry/chao-phraya.geojson
+    sources: [osm-water]
+  - id: canals-nominal
+    kind: line
+    stroke: "#0284c7"
+    stroke_width: 36
+    lift: 14
+    geojson: ../_shared/data/geometry/canals.geojson
+    sources: [bma-drainage-system]
+  - id: canals-overload
+    kind: line
+    stroke: "#dc2626"
+    stroke_width: 44
+    lift: 18
+    geojson: ../_shared/data/geometry/canals.geojson
+    sources: [bma-drainage-system]
+  - id: floodgate-barriers
+    kind: line
+    stroke: "#ef4444"
+    stroke_width: 24
+    lift: 22
+    points:
+      - [1700, 1100]
+      - [1780, 1100]
+      - [1840, 1250]
+      - [1920, 1250]
+    sources: [bma-drainage-system]
+  - id: attribution-backdrop
+    kind: polygon
+    fill: "#181a1f"
+    stroke: "#334155"
+    stroke_width: 8
+    lift: 30
+    points:
+      - [400, 400]
+      - [3440, 400]
+      - [3440, 1760]
+      - [400, 1760]
+    sources: [bma-drainage-system]
+labels:
+  - text: "PHRA KHANONG PUMP STATION: 100% CAPACITY (420 m³/s)"
+    x: 1800
+    y: 880
+    scene: nominal-pumping
+    sources: [bma-drainage-system]
+  - text: "FLOODGATES CLOSED: GRAVITY DISCHARGE HALTED (0 m³/s)"
+    x: 1750
+    y: 1150
+    scene: tidal-surge-gate-closure
+    sources: [bma-drainage-system]
+  - text: "CANAL RETENTION LIMIT EXCEEDED"
+    x: 2100
+    y: 750
+    scene: tidal-surge-gate-closure
+    sources: [bma-drainage-system]
+  - text: "GEOGRAPHIC FEATURES ARE SOURCE-BACKED; TIMING IS ILLUSTRATIVE."
+    x: 700
+    y: 850
+    scene: attribution-card
+    sources: [bma-drainage-system]
+  - text: "SOURCES: ROYAL THAI SURVEY DEPT (1896) | JICA | CHULALONGKORN UNIV | BMA DDS | OSM | JRC"
+    x: 520
+    y: 1100
+    scene: attribution-card
+    sources: [chula-subsidence-study-2020, jica-bangkok-groundwater-1999, rtsd-bangkok-1896, jrc-ghsl-builts]
+scenes:
+  - id: nominal-pumping
+    start: 0.0
+    end: 1.5
+  - id: tidal-surge-gate-closure
+    start: 1.5
+    end: 3.0
+  - id: attribution-card
+    start: 3.0
+    end: 4.0
+animations:
+  - layer: canals-overload
+    opacity:
+      - at: 0.0
+        value: 0.0
+      - at: 1.5
+        value: 0.0
+      - at: 2.2
+        value: 1.0
+      - at: 3.0
+        value: 1.0
+      - at: 3.01
+        value: 0.0
+  - layer: floodgate-barriers
+    opacity:
+      - at: 0.0
+        value: 0.0
+      - at: 1.5
+        value: 1.0
+      - at: 3.0
+        value: 1.0
+      - at: 3.01
+        value: 0.0
+  - layer: attribution-backdrop
+    opacity:
+      - at: 0.0
+        value: 0.0
+      - at: 2.99
+        value: 0.0
+      - at: 3.0
+        value: 0.94
+      - at: 4.0
+        value: 0.94

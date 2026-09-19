@@ -1,0 +1,32 @@
+sources:
+  - id: rtsd-bangkok-1896
+    title: Thai Map of Bangkok (Phaenthi Krung Thep 1896) Royal Thai Survey Department
+    url: https://commons.wikimedia.org/wiki/File:Thai_Map_of_Bangkok_Phaenthi_Krung_Thep_1896.jpg
+    license: Public Domain (PD-old-70 / PDM 1.0)
+    retrieved: "2026-09-18"
+    category: "Historical & Morphological Surveys"
+    assume_crs: EPSG:4326
+
+  - id: bradley-bangkok-1870
+    title: City Map of Bangkok (1870) by Dr. Dan Beach Bradley
+    url: https://commons.wikimedia.org/wiki/File:Map_of_Bangkok_1870_Bradley.png
+    license: Public Domain (PD-old-100 / PDM 1.0)
+    retrieved: "2026-09-18"
+    category: "Historical & Morphological Surveys"
+    assume_crs: EPSG:4326
+
+  - id: jrc-ghsl-builts
+    title: Global Human Settlement Layer GHS-BUILT-S R2023A
+    url: https://ghsl.jrc.ec.europa.eu/ghs_buS2023.php
+    license: CC BY 4.0 (commercial use permitted with attribution)
+    retrieved: "2026-09-18"
+    category: "Historical & Morphological Surveys"
+    assume_crs: EPSG:4326
+
+  - id: osm-water
+    title: OpenStreetMap waterway and coastline data
+    url: https://www.openstreetmap.org/copyright
+    license: ODbL-1.0 (© OpenStreetMap contributors)
+    retrieved: "2026-09-16"
+    category: "Geographic & Elevation Baselines"
+    assume_crs: EPSG:4326
