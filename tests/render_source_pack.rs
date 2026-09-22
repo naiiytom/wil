@@ -7,9 +7,9 @@ use std::{
 };
 
 use world_in_layers::{
-    EpisodeManifest, NumberKeyframe, interpolate, render_episode_pack, render_sequence_frame,
-    render_sequence_pack, render_sequence_pack_with_jobs, render_source_pack,
-    validate_episode_pack, validate_sequence_pack,
+    Easing, EpisodeManifest, NumberKeyframe, interpolate, render_episode_pack,
+    render_sequence_frame, render_sequence_pack, render_sequence_pack_with_jobs,
+    render_source_pack, validate_episode_pack, validate_sequence_pack,
 };
 
 fn temporary_pack() -> PathBuf {
@@ -114,7 +114,19 @@ sources:
 }
 
 fn keyframe(at: f64, value: f64) -> NumberKeyframe {
-    NumberKeyframe { at, value }
+    NumberKeyframe {
+        at,
+        value,
+        easing: None,
+    }
+}
+
+fn keyframe_with_easing(at: f64, value: f64, easing: Easing) -> NumberKeyframe {
+    NumberKeyframe {
+        at,
+        value,
+        easing: Some(easing),
+    }
 }
 
 fn temporary_animated_pack() -> PathBuf {
@@ -191,12 +203,385 @@ fn interpolates_layer_opacity_at_the_frame_time() {
 }
 
 #[test]
+fn interpolates_keyframe_with_ease_in() {
+    // Fraction t=0.5 -> 0.5^2 = 0.25 -> value = 0.25
+    assert_eq!(
+        interpolate(
+            &[
+                keyframe_with_easing(0.0, 0.0, Easing::EaseIn),
+                keyframe(2.0, 1.0),
+            ],
+            1.0,
+            1.0
+        ),
+        0.25
+    );
+}
+
+#[test]
+fn interpolates_keyframe_with_ease_out() {
+    // Fraction t=0.5 -> 0.5 * (2 - 0.5) = 0.75 -> value = 0.75
+    assert_eq!(
+        interpolate(
+            &[
+                keyframe_with_easing(0.0, 0.0, Easing::EaseOut),
+                keyframe(2.0, 1.0),
+            ],
+            1.0,
+            1.0
+        ),
+        0.75
+    );
+}
+
+#[test]
+fn interpolates_keyframe_with_ease_in_out() {
+    // Fraction t=0.25 -> 0.25^2 * (3 - 2 * 0.25) = 0.0625 * 2.5 = 0.15625
+    assert_eq!(
+        interpolate(
+            &[
+                keyframe_with_easing(0.0, 0.0, Easing::EaseInOut),
+                keyframe(2.0, 1.0),
+            ],
+            0.5,
+            1.0
+        ),
+        0.15625
+    );
+    // Fraction t=0.5 -> 0.5^2 * (3 - 2 * 0.5) = 0.25 * 2.0 = 0.5
+    assert_eq!(
+        interpolate(
+            &[
+                keyframe_with_easing(0.0, 0.0, Easing::EaseInOut),
+                keyframe(2.0, 1.0),
+            ],
+            1.0,
+            1.0
+        ),
+        0.5
+    );
+}
+
+#[test]
+fn interpolates_keyframe_with_cubic_curves() {
+    // CubicIn: fraction t=0.5 -> 0.5^3 = 0.125
+    assert_eq!(
+        interpolate(
+            &[
+                keyframe_with_easing(0.0, 0.0, Easing::CubicIn),
+                keyframe(2.0, 1.0),
+            ],
+            1.0,
+            1.0
+        ),
+        0.125
+    );
+
+    // CubicOut: fraction t=0.5 -> 1 - (1 - 0.5)^3 = 0.875
+    assert_eq!(
+        interpolate(
+            &[
+                keyframe_with_easing(0.0, 0.0, Easing::CubicOut),
+                keyframe(2.0, 1.0),
+            ],
+            1.0,
+            1.0
+        ),
+        0.875
+    );
+
+    // CubicInOut:
+    // t=0.25 (time 0.5) -> 4 * 0.25^3 = 0.0625
+    assert_eq!(
+        interpolate(
+            &[
+                keyframe_with_easing(0.0, 0.0, Easing::CubicInOut),
+                keyframe(2.0, 1.0),
+            ],
+            0.5,
+            1.0
+        ),
+        0.0625
+    );
+    // t=0.5 (time 1.0) -> 0.5
+    assert_eq!(
+        interpolate(
+            &[
+                keyframe_with_easing(0.0, 0.0, Easing::CubicInOut),
+                keyframe(2.0, 1.0),
+            ],
+            1.0,
+            1.0
+        ),
+        0.5
+    );
+    // t=0.75 (time 1.5) -> 1 - (-2 * 0.75 + 2)^3 / 2 = 1 - 0.0625 = 0.9375
+    assert_eq!(
+        interpolate(
+            &[
+                keyframe_with_easing(0.0, 0.0, Easing::CubicInOut),
+                keyframe(2.0, 1.0),
+            ],
+            1.5,
+            1.0
+        ),
+        0.9375
+    );
+}
+
+#[test]
+fn interpolates_keyframe_endpoints_and_clamping() {
+    let easings = [
+        Easing::Linear,
+        Easing::EaseIn,
+        Easing::EaseOut,
+        Easing::EaseInOut,
+        Easing::CubicIn,
+        Easing::CubicOut,
+        Easing::CubicInOut,
+    ];
+
+    for easing in easings {
+        assert_eq!(easing.apply(0.0), 0.0);
+        assert_eq!(easing.apply(1.0), 1.0);
+        assert_eq!(easing.apply(-0.5), 0.0);
+        assert_eq!(easing.apply(1.5), 1.0);
+
+        let kfs = [keyframe_with_easing(1.0, 10.0, easing), keyframe(3.0, 30.0)];
+        assert_eq!(interpolate(&kfs, 0.0, 0.0), 10.0);
+        assert_eq!(interpolate(&kfs, 1.0, 0.0), 10.0);
+        assert_eq!(interpolate(&kfs, 3.0, 0.0), 30.0);
+        assert_eq!(interpolate(&kfs, 4.0, 0.0), 30.0);
+    }
+}
+
+#[test]
+fn easing_curves_are_strictly_monotonic() {
+    let easings = [
+        Easing::Linear,
+        Easing::EaseIn,
+        Easing::EaseOut,
+        Easing::EaseInOut,
+        Easing::CubicIn,
+        Easing::CubicOut,
+        Easing::CubicInOut,
+    ];
+
+    for easing in easings {
+        let mut prev = 0.0;
+        for step in 0..=100 {
+            let t = step as f64 / 100.0;
+            let val = easing.apply(t);
+            assert!(
+                val >= prev,
+                "easing {:?} violated monotonicity at t={}: prev={}, val={}",
+                easing,
+                t,
+                prev,
+                val
+            );
+            prev = val;
+        }
+    }
+}
+
+#[test]
+fn sequence_pack_parses_and_validates_keyframe_easing() {
+    let pack = temporary_sequence_pack(
+        r#"animations:
+  - layer: terrain
+    opacity:
+      - at: 0.0
+        value: 0.0
+        easing: ease-in-out
+      - at: 2.0
+        value: 1.0
+"#,
+    );
+    assert!(validate_sequence_pack(&pack).is_ok());
+    fs::remove_dir_all(pack).unwrap();
+}
+
+#[test]
+fn rejects_invalid_easing_name() {
+    let pack = temporary_sequence_pack(
+        r#"animations:
+  - layer: terrain
+    opacity:
+      - at: 0.0
+        value: 0.0
+        easing: bouncy-bounce
+      - at: 2.0
+        value: 1.0
+"#,
+    );
+    let err = validate_sequence_pack(&pack).unwrap_err();
+    assert!(
+        err.to_string().contains("unknown variant") || err.to_string().contains("bouncy-bounce")
+    );
+    fs::remove_dir_all(pack).unwrap();
+}
+
+#[test]
 fn sequence_frames_change_when_a_layer_fades_in() {
     let pack = temporary_animated_pack();
     assert_ne!(
         render_sequence_frame(&pack, 0).unwrap(),
         render_sequence_frame(&pack, 1).unwrap()
     );
+    fs::remove_dir_all(pack).unwrap();
+}
+
+#[test]
+fn stroke_dash_flow_animation_changes_rendered_frames() {
+    let pack = temporary_sequence_pack("");
+    let sequence = fs::read_to_string(pack.join("sequence.yaml"))
+        .unwrap()
+        .replace(
+            "    sources: [basin]\nlabels: []",
+            r##"    sources: [basin]
+  - id: flow-line
+    kind: line
+    stroke: "#226688"
+    stroke_width: 8
+    stroke_dasharray: "20 10"
+    stroke_dashoffset: 0.0
+    points: [[10, 90], [160, 90], [310, 90]]
+    sources: [basin]
+labels: []"##,
+        );
+    let sequence_with_anim = format!(
+        "{sequence}\nanimations:\n  - layer: flow-line\n    stroke_dashoffset:\n      - at: 0.0\n        value: 0.0\n      - at: 2.0\n        value: 30.0\n"
+    );
+    fs::write(pack.join("sequence.yaml"), sequence_with_anim).unwrap();
+
+    let frame0 = render_sequence_frame(&pack, 0).unwrap();
+    let frame1 = render_sequence_frame(&pack, 1).unwrap();
+    assert_ne!(frame0, frame1);
+    fs::remove_dir_all(pack).unwrap();
+}
+
+#[test]
+fn validates_sequence_stroke_dashoffset_keyframes() {
+    let pack = temporary_sequence_pack(
+        r#"animations:
+  - layer: terrain
+    stroke_dashoffset:
+      - at: 0.0
+        value: 0.0
+        easing: ease-out
+      - at: 2.0
+        value: -50.0
+"#,
+    );
+    assert!(validate_sequence_pack(&pack).is_ok());
+    fs::remove_dir_all(pack).unwrap();
+}
+
+#[test]
+fn rejects_invalid_stroke_dashoffset_keyframes() {
+    let pack = temporary_sequence_pack(
+        r#"animations:
+  - layer: terrain
+    stroke_dashoffset:
+      - at: 3.5
+        value: 0.0
+"#,
+    );
+    let err = validate_sequence_pack(&pack).unwrap_err();
+    assert!(
+        err.to_string()
+            .contains("stroke_dashoffset keyframes must be within the sequence duration")
+    );
+    fs::remove_dir_all(pack).unwrap();
+}
+
+#[test]
+fn static_scene_renders_stroke_dasharray() {
+    let pack = temporary_pack();
+    let scene_yaml = r##"
+title: Dashed Flow Static Scene
+canvas:
+  width: 320
+  height: 180
+background: "#edf0e7"
+layers:
+  - id: flow
+    kind: line
+    stroke: "#0066aa"
+    stroke_width: 6
+    stroke_dasharray: "15 5"
+    stroke_dashoffset: 5.0
+    lift: 4.0
+    points: [[0, 50], [320, 50]]
+    sources: [basin]
+labels: []
+"##;
+    fs::write(pack.join("scene.yaml"), scene_yaml).unwrap();
+    fs::write(
+        pack.join("sources.yaml"),
+        r#"sources:
+  - id: basin
+    title: Chao Phraya basin reference
+    url: https://example.com/basin
+    license: ODbL-1.0
+    retrieved: 2026-09-16
+"#,
+    )
+    .unwrap();
+
+    let output = pack.join("scene.png");
+    render_source_pack(&pack, &output).unwrap();
+    assert!(output.is_file());
+    fs::remove_dir_all(pack).unwrap();
+}
+
+#[test]
+fn renders_dashed_polygon_drop_shadow_with_stroke() {
+    let pack = temporary_pack();
+    let scene_yaml = r##"
+title: Dashed Polygon Drop Shadow
+canvas:
+  width: 320
+  height: 180
+background: "#ffffff"
+layers:
+  - id: outline-dashed-zone
+    kind: polygon
+    fill: "none"
+    stroke: "#0066aa"
+    stroke_width: 6
+    stroke_dasharray: "15 5"
+    lift: 6.0
+    points: [[20, 20], [140, 20], [140, 100], [20, 100]]
+    sources: [basin]
+  - id: filled-dashed-zone
+    kind: polygon
+    fill: "#eeddcc"
+    stroke: "#556677"
+    stroke_width: 8
+    stroke_dasharray: "20 10"
+    lift: 8.0
+    points: [[160, 20], [300, 20], [300, 100], [160, 100]]
+    sources: [basin]
+labels: []
+"##;
+    fs::write(pack.join("scene.yaml"), scene_yaml).unwrap();
+    fs::write(
+        pack.join("sources.yaml"),
+        r#"sources:
+  - id: basin
+    title: Test Basin
+    url: https://example.com/basin
+    license: CC0-1.0
+    retrieved: 2026-09-16
+"#,
+    )
+    .unwrap();
+
+    let output = pack.join("scene.png");
+    render_source_pack(&pack, &output).unwrap();
+    assert!(output.is_file());
     fs::remove_dir_all(pack).unwrap();
 }
 
@@ -732,7 +1117,10 @@ fn render_episode_pack_emits_structured_subdirectories_and_manifest() {
     assert_eq!(manifest.sequences.len(), 2);
     assert_eq!(manifest.sequences[0].directory, "01-seq");
     assert_eq!(manifest.sequences[1].directory, "02-seq");
-    assert_eq!(manifest.attribution_card, "Geographic features are source-backed; timing is illustrative.");
+    assert_eq!(
+        manifest.attribution_card,
+        "Geographic features are source-backed; timing is illustrative."
+    );
 
     fs::remove_dir_all(pack).unwrap();
 }
@@ -795,4 +1183,3 @@ fn parallel_episode_render_matches_sequential_output() {
 
     fs::remove_dir_all(pack).unwrap();
 }
-

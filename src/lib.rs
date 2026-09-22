@@ -57,6 +57,10 @@ struct Layer {
     #[serde(default)]
     lift: f32,
     #[serde(default)]
+    stroke_dasharray: Option<String>,
+    #[serde(default)]
+    stroke_dashoffset: f32,
+    #[serde(default)]
     geojson: Option<String>,
     #[serde(default)]
     points: Vec<[f32; 2]>,
@@ -189,6 +193,8 @@ pub struct LayerAnimation {
     translate: TransformKeyframes,
     #[serde(default)]
     scale: Vec<NumberKeyframe>,
+    #[serde(default)]
+    stroke_dashoffset: Vec<NumberKeyframe>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -199,11 +205,47 @@ pub struct LabelAnimation {
     opacity: Vec<NumberKeyframe>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize, serde::Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum Easing {
+    #[default]
+    Linear,
+    EaseIn,
+    EaseOut,
+    EaseInOut,
+    CubicIn,
+    CubicOut,
+    CubicInOut,
+}
+
+impl Easing {
+    pub fn apply(self, t: f64) -> f64 {
+        let t = t.clamp(0.0, 1.0);
+        match self {
+            Self::Linear => t,
+            Self::EaseIn => t * t,
+            Self::EaseOut => t * (2.0 - t),
+            Self::EaseInOut => t * t * (3.0 - 2.0 * t),
+            Self::CubicIn => t * t * t,
+            Self::CubicOut => 1.0 - (1.0 - t).powi(3),
+            Self::CubicInOut => {
+                if t < 0.5 {
+                    4.0 * t * t * t
+                } else {
+                    1.0 - (-2.0 * t + 2.0).powi(3) / 2.0
+                }
+            }
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Deserialize, serde::Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct NumberKeyframe {
     pub at: f64,
     pub value: f64,
+    #[serde(default)]
+    pub easing: Option<Easing>,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -235,6 +277,7 @@ struct FrameScene<'a> {
 struct FrameLayer<'a> {
     layer: &'a Layer,
     transform: FrameTransform,
+    stroke_dashoffset: f64,
 }
 
 struct FrameLabel<'a> {
@@ -316,11 +359,8 @@ fn render_sequence_pack_internal(
         (0..frame_count).into_par_iter().try_for_each(|frame| {
             let frame_bytes = render_sequence_frame_from_sequence_with_db(&sequence, frame, fontdb)
                 .map_err(|e| e.to_string())?;
-            fs::write(
-                temporary.join(format!("frame-{frame:06}.png")),
-                frame_bytes,
-            )
-            .map_err(|e| e.to_string())?;
+            fs::write(temporary.join(format!("frame-{frame:06}.png")), frame_bytes)
+                .map_err(|e| e.to_string())?;
             Ok::<(), String>(())
         })
     };
@@ -407,7 +447,11 @@ pub fn validate_episode_pack(pack: impl AsRef<Path>) -> RenderResult<EpisodePack
         }
         let child_pack = pack.join(&entry.pack);
         if !child_pack.is_dir() {
-            return Err(format!("sequence pack directory '{}' not found", child_pack.display()).into());
+            return Err(format!(
+                "sequence pack directory '{}' not found",
+                child_pack.display()
+            )
+            .into());
         }
 
         validate_sequence_pack(&child_pack)?;
@@ -423,7 +467,8 @@ pub fn validate_episode_pack(pack: impl AsRef<Path>) -> RenderResult<EpisodePack
                     return Err(format!(
                         "conflicting source definition for '{}' between '{}' and '{}'",
                         source.id, prev_pack, entry.pack
-                    ).into());
+                    )
+                    .into());
                 }
             } else {
                 all_sources.insert(source.id.clone(), (source, entry.pack.clone()));
@@ -495,10 +540,9 @@ pub fn render_episode_pack(
                     .num_threads(threads)
                     .build()?;
                 pool.install(render_sequences)
-                    .map_err(|e| Box::<dyn Error>::from(e))?
+                    .map_err(Box::<dyn Error>::from)?
             }
-            None => render_sequences()
-                .map_err(|e| Box::<dyn Error>::from(e))?,
+            None => render_sequences().map_err(Box::<dyn Error>::from)?,
         };
 
         let mut manifest_sequences = Vec::new();
@@ -554,7 +598,8 @@ pub fn render_episode_pack(
             rendered_duration_seconds,
             total_frame_count,
             sequences: manifest_sequences,
-            attribution_card: "Geographic features are source-backed; timing is illustrative.".to_string(),
+            attribution_card: "Geographic features are source-backed; timing is illustrative."
+                .to_string(),
             sources: source_groups,
         };
 
@@ -686,10 +731,7 @@ fn render_sequence_frame_from_sequence_with_db(
         return Err("sequence frame is outside the sequence duration".into());
     }
     render_png_with_db(
-        frame_scene(
-            sequence,
-            frame as f64 / f64::from(sequence.fps),
-        ),
+        frame_scene(sequence, frame as f64 / f64::from(sequence.fps)),
         fontdb,
     )
 }
@@ -749,6 +791,7 @@ fn static_frame_scene(scene: &Scene) -> FrameScene<'_> {
             .map(|layer| FrameLayer {
                 layer,
                 transform: FrameTransform::IDENTITY,
+                stroke_dashoffset: f64::from(layer.stroke_dashoffset),
             })
             .collect(),
         labels: scene
@@ -773,20 +816,30 @@ fn frame_scene(sequence: &SequencePack, time: f64) -> FrameScene<'_> {
         .layers
         .iter()
         .map(|layer| {
-            let transform = sequence
+            let (transform, stroke_dashoffset) = sequence
                 .animations
                 .iter()
                 .find(|animation| animation.layer == layer.id)
                 .map(|animation| {
-                    interpolate_spatial(
+                    let trans = interpolate_spatial(
                         &animation.translate,
                         &animation.scale,
                         interpolate(&animation.opacity, time, 1.0),
                         time,
-                    )
+                    );
+                    let dashoffset = interpolate(
+                        &animation.stroke_dashoffset,
+                        time,
+                        f64::from(layer.stroke_dashoffset),
+                    );
+                    (trans, dashoffset)
                 })
-                .unwrap_or(FrameTransform::IDENTITY);
-            FrameLayer { layer, transform }
+                .unwrap_or((FrameTransform::IDENTITY, f64::from(layer.stroke_dashoffset)));
+            FrameLayer {
+                layer,
+                transform,
+                stroke_dashoffset,
+            }
         })
         .collect();
     let active_scene = sequence
@@ -831,7 +884,8 @@ pub fn interpolate(keyframes: &[NumberKeyframe], time: f64, default: f64) -> f64
     for pair in keyframes.windows(2) {
         if time <= pair[1].at {
             let fraction = (time - pair[0].at) / (pair[1].at - pair[0].at);
-            return pair[0].value + (pair[1].value - pair[0].value) * fraction;
+            let eased = pair[0].easing.unwrap_or_default().apply(fraction);
+            return pair[0].value + (pair[1].value - pair[0].value) * eased;
         }
     }
     keyframes.last().unwrap().value
@@ -939,29 +993,27 @@ fn validate_geojson_crs(value: &yaml_serde::Value, path: &str) -> RenderResult<(
             {
                 let crs_name = match v {
                     yaml_serde::Value::String(s) => Some(s.as_str()),
-                    yaml_serde::Value::Mapping(crs_map) => {
-                        crs_map.iter().find_map(|(ck, cv)| {
-                            if let (
-                                yaml_serde::Value::String(ck_str),
-                                yaml_serde::Value::Mapping(props),
-                            ) = (ck, cv)
-                                && ck_str == "properties"
-                            {
-                                return props.iter().find_map(|(pk, pv)| {
-                                    if let (
-                                        yaml_serde::Value::String(pk_str),
-                                        yaml_serde::Value::String(pv_str),
-                                    ) = (pk, pv)
-                                        && pk_str == "name"
-                                    {
-                                        return Some(pv_str.as_str());
-                                    }
-                                    None
-                                });
-                            }
-                            None
-                        })
-                    }
+                    yaml_serde::Value::Mapping(crs_map) => crs_map.iter().find_map(|(ck, cv)| {
+                        if let (
+                            yaml_serde::Value::String(ck_str),
+                            yaml_serde::Value::Mapping(props),
+                        ) = (ck, cv)
+                            && ck_str == "properties"
+                        {
+                            return props.iter().find_map(|(pk, pv)| {
+                                if let (
+                                    yaml_serde::Value::String(pk_str),
+                                    yaml_serde::Value::String(pv_str),
+                                ) = (pk, pv)
+                                    && pk_str == "name"
+                                {
+                                    return Some(pv_str.as_str());
+                                }
+                                None
+                            });
+                        }
+                        None
+                    }),
                     _ => None,
                 };
                 if let Some(name) = crs_name
@@ -1118,6 +1170,11 @@ fn validate_sequence(sequence: &SequencePack, sources: &Sources) -> RenderResult
             &animation.scale,
             sequence.duration_seconds,
             "animation",
+        )?;
+        validate_keyframes(
+            &animation.stroke_dashoffset,
+            sequence.duration_seconds,
+            "stroke_dashoffset",
         )?;
     }
     if let Some(transition) = &sequence.map_transition {
@@ -1276,12 +1333,33 @@ fn compose_svg(scene: &FrameScene<'_>) -> String {
             layer.stroke_width
         };
         let lift = layer.lift.max(0.0);
+        let dash_attrs = match &layer.stroke_dasharray {
+            Some(dasharray) if !dasharray.trim().is_empty() => {
+                format!(
+                    r#" stroke-dasharray="{}" stroke-dashoffset="{:.2}""#,
+                    escape(dasharray),
+                    frame_layer.stroke_dashoffset
+                )
+            }
+            _ => String::new(),
+        };
         match layer.kind.as_str() {
             "polygon" => {
                 if lift > 0.0 {
-                    svg.push_str(&format!(r##"<polygon points="{}" fill="#514d42" fill-opacity="0.34" transform="translate(0 {})"/>"##, points, lift));
+                    let shadow_fill = if fill == "none" { "none" } else { "#514d42" };
+                    let shadow_stroke = if stroke == "none" {
+                        String::new()
+                    } else {
+                        format!(
+                            r##" stroke="#514d42" stroke-opacity="0.34" stroke-width="{stroke_width}"{dash_attrs} stroke-linejoin="round""##
+                        )
+                    };
+                    svg.push_str(&format!(
+                        r##"<polygon points="{}" fill="{shadow_fill}" fill-opacity="0.34"{shadow_stroke} transform="translate(0 {})"/>"##,
+                        points, lift
+                    ));
                 }
-                svg.push_str(&format!(r#"<polygon id="{}" points="{}" fill="{}" stroke="{}" stroke-width="{}" stroke-linejoin="round"/>"#, escape(&layer.id), points, fill, stroke, stroke_width));
+                svg.push_str(&format!(r#"<polygon id="{}" points="{}" fill="{}" stroke="{}" stroke-width="{}"{dash_attrs} stroke-linejoin="round"/>"#, escape(&layer.id), points, fill, stroke, stroke_width));
                 svg.push_str(&format!(
                     r#"<polygon points="{}" fill="url(#paper-grain)" fill-opacity="0.36"/>"#,
                     points
@@ -1289,9 +1367,9 @@ fn compose_svg(scene: &FrameScene<'_>) -> String {
             }
             "line" => {
                 if lift > 0.0 {
-                    svg.push_str(&format!(r##"<polyline points="{}" fill="none" stroke="#514d42" stroke-opacity="0.34" stroke-width="{}" stroke-linecap="round" stroke-linejoin="round" transform="translate(0 {})"/>"##, points, stroke_width, lift));
+                    svg.push_str(&format!(r##"<polyline points="{}" fill="none" stroke="#514d42" stroke-opacity="0.34" stroke-width="{}"{dash_attrs} stroke-linecap="round" stroke-linejoin="round" transform="translate(0 {})"/>"##, points, stroke_width, lift));
                 }
-                svg.push_str(&format!(r#"<polyline id="{}" points="{}" fill="none" stroke="{}" stroke-width="{}" stroke-linecap="round" stroke-linejoin="round"/>"#, escape(&layer.id), points, stroke, stroke_width));
+                svg.push_str(&format!(r#"<polyline id="{}" points="{}" fill="none" stroke="{}" stroke-width="{}"{dash_attrs} stroke-linecap="round" stroke-linejoin="round"/>"#, escape(&layer.id), points, stroke, stroke_width));
             }
             _ => {}
         }

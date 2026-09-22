@@ -90,4 +90,3 @@ fn parse_positive_jobs(val_str: &str, flag: &str) -> Result<usize, ExitCode> {
         }
     }
 }
-
