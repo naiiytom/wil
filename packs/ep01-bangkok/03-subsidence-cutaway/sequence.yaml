@@ -5,7 +5,7 @@ canvas:
 bounds: [100.0, 13.0, 101.0, 14.0]
 background: "#181a1f"
 fps: 10
-duration_seconds: 4.0
+duration_seconds: 8.0
 layers:
   - id: sand-aquifer-layer
     kind: polygon
@@ -116,18 +116,18 @@ labels:
 scenes:
   - id: groundwater-extraction
     start: 0.0
-    end: 2.0
-  - id: clay-compaction-subsidence
-    start: 2.0
     end: 4.0
+  - id: clay-compaction-subsidence
+    start: 4.0
+    end: 8.0
 animations:
   - layer: soft-clay-layer
     translate:
-      y: [{at: 0.0, value: 0.0}, {at: 2.0, value: 0.0}, {at: 4.0, value: 140.0}]
+      y: [{at: 0.0, value: 0.0}, {at: 4.0, value: 0.0}, {at: 8.0, value: 140.0}]
   - layer: surface-ground-layer
     translate:
-      y: [{at: 0.0, value: 0.0}, {at: 2.0, value: 0.0}, {at: 4.0, value: 140.0}]
+      y: [{at: 0.0, value: 0.0}, {at: 4.0, value: 0.0}, {at: 8.0, value: 140.0}]
   - layer: settling-building
     translate:
-      y: [{at: 0.0, value: 0.0}, {at: 2.0, value: 0.0}, {at: 4.0, value: 140.0}]
+      y: [{at: 0.0, value: 0.0}, {at: 4.0, value: 0.0}, {at: 8.0, value: 140.0}]
 assume_crs: EPSG:4326

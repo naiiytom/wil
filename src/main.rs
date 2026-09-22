@@ -22,28 +22,19 @@ fn main() -> ExitCode {
             }
             i += 1;
             let val_str = rest[i].to_string_lossy();
-            match val_str.parse::<usize>() {
-                Ok(n) if n > 0 => jobs = Some(n),
-                _ => {
-                    eprintln!("error: --jobs must be a positive integer");
-                    return ExitCode::FAILURE;
-                }
+            match parse_positive_jobs(&val_str, "--jobs") {
+                Ok(n) => jobs = Some(n),
+                Err(code) => return code,
             }
         } else if let Some(val_str) = arg.strip_prefix("--jobs=") {
-            match val_str.parse::<usize>() {
-                Ok(n) if n > 0 => jobs = Some(n),
-                _ => {
-                    eprintln!("error: --jobs must be a positive integer");
-                    return ExitCode::FAILURE;
-                }
+            match parse_positive_jobs(val_str, "--jobs") {
+                Ok(n) => jobs = Some(n),
+                Err(code) => return code,
             }
         } else if let Some(val_str) = arg.strip_prefix("-j=") {
-            match val_str.parse::<usize>() {
-                Ok(n) if n > 0 => jobs = Some(n),
-                _ => {
-                    eprintln!("error: -j must be a positive integer");
-                    return ExitCode::FAILURE;
-                }
+            match parse_positive_jobs(val_str, "-j") {
+                Ok(n) => jobs = Some(n),
+                Err(code) => return code,
             }
         } else if arg.starts_with('-') {
             eprintln!("error: unrecognized flag '{arg}'");
@@ -89,3 +80,14 @@ fn usage() -> ExitCode {
     );
     ExitCode::FAILURE
 }
+
+fn parse_positive_jobs(val_str: &str, flag: &str) -> Result<usize, ExitCode> {
+    match val_str.parse::<usize>() {
+        Ok(n) if n > 0 => Ok(n),
+        _ => {
+            eprintln!("error: {flag} must be a positive integer");
+            Err(ExitCode::FAILURE)
+        }
+    }
+}
+

@@ -775,3 +775,24 @@ fn cli_renders_an_episode() {
 
     fs::remove_dir_all(pack).unwrap();
 }
+
+#[test]
+fn parallel_episode_render_matches_sequential_output() {
+    let pack = temporary_episode_pack();
+    let sequential_output = pack.join("sequential_episode");
+    let parallel_output = pack.join("parallel_episode");
+
+    render_episode_pack(&pack, &sequential_output, Some(1)).unwrap();
+    render_episode_pack(&pack, &parallel_output, Some(4)).unwrap();
+
+    let seq_manifest = fs::read_to_string(sequential_output.join("episode-manifest.yaml")).unwrap();
+    let par_manifest = fs::read_to_string(parallel_output.join("episode-manifest.yaml")).unwrap();
+    assert_eq!(seq_manifest, par_manifest);
+
+    let seq_frame = fs::read(sequential_output.join("01-seq/frame-000000.png")).unwrap();
+    let par_frame = fs::read(parallel_output.join("01-seq/frame-000000.png")).unwrap();
+    assert_eq!(seq_frame, par_frame);
+
+    fs::remove_dir_all(pack).unwrap();
+}
+

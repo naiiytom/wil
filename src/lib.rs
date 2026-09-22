@@ -292,6 +292,16 @@ pub fn render_sequence_pack_with_jobs(
     output: impl AsRef<Path>,
     jobs: Option<usize>,
 ) -> RenderResult<()> {
+    let fontdb = system_fontdb();
+    render_sequence_pack_internal(pack, output, jobs, &fontdb)
+}
+
+fn render_sequence_pack_internal(
+    pack: impl AsRef<Path>,
+    output: impl AsRef<Path>,
+    jobs: Option<usize>,
+    fontdb: &std::sync::Arc<resvg::usvg::fontdb::Database>,
+) -> RenderResult<()> {
     let output = output.as_ref();
     if output.exists() {
         return Err("sequence render output already exists".into());
@@ -300,12 +310,11 @@ pub fn render_sequence_pack_with_jobs(
     let sequence = validate_sequence_pack(pack)?;
     let frame_count = sequence_frame_count(&sequence);
     let temporary = temporary_output_directory(output)?;
-    let fontdb = system_fontdb();
 
     let render_frames = || {
         use rayon::prelude::*;
         (0..frame_count).into_par_iter().try_for_each(|frame| {
-            let frame_bytes = render_sequence_frame_from_sequence_with_db(&sequence, frame, &fontdb)
+            let frame_bytes = render_sequence_frame_from_sequence_with_db(&sequence, frame, fontdb)
                 .map_err(|e| e.to_string())?;
             fs::write(
                 temporary.join(format!("frame-{frame:06}.png")),
@@ -438,40 +447,73 @@ pub fn render_episode_pack(
 
     let episode = validate_episode_pack(pack)?;
     let temporary = temporary_output_directory(output)?;
+    let fontdb = system_fontdb();
+
+    let render_sequences = || {
+        use rayon::prelude::*;
+        episode
+            .sequences
+            .par_iter()
+            .map(|entry| -> Result<(EpisodeManifestSequence, usize, f64, Vec<SourceReference>), String> {
+                let child_pack_dir = pack.join(&entry.pack);
+                let seq_output_dir = temporary.join(&entry.pack);
+
+                render_sequence_pack_internal(&child_pack_dir, &seq_output_dir, None, &fontdb)
+                    .map_err(|e| e.to_string())?;
+
+                let child_seq = validate_sequence_pack(&child_pack_dir)
+                    .map_err(|e| e.to_string())?;
+                let child_frame_count = sequence_frame_count(&child_seq);
+                let child_sources = load_sources(&child_pack_dir)
+                    .map_err(|e| e.to_string())?;
+
+                let manifest_seq = EpisodeManifestSequence {
+                    id: entry.id.clone(),
+                    pack: entry.pack.clone(),
+                    section: entry.section.clone(),
+                    directory: entry.pack.clone(),
+                    fps: child_seq.fps,
+                    duration_seconds: child_seq.duration_seconds,
+                    frame_count: child_frame_count,
+                    frame_pattern: "frame-%06d.png".to_string(),
+                };
+
+                Ok((
+                    manifest_seq,
+                    child_frame_count,
+                    child_seq.duration_seconds,
+                    child_sources.sources,
+                ))
+            })
+            .collect::<Result<Vec<_>, String>>()
+    };
 
     let result = (|| -> RenderResult<()> {
+        let rendered_items: Vec<_> = match jobs {
+            Some(threads) => {
+                let pool = rayon::ThreadPoolBuilder::new()
+                    .num_threads(threads)
+                    .build()?;
+                pool.install(render_sequences)
+                    .map_err(|e| Box::<dyn Error>::from(e))?
+            }
+            None => render_sequences()
+                .map_err(|e| Box::<dyn Error>::from(e))?,
+        };
+
         let mut manifest_sequences = Vec::new();
         let mut total_frame_count = 0;
         let mut rendered_duration_seconds = 0.0;
         let mut all_unique_sources: std::collections::BTreeMap<String, SourceReference> =
             std::collections::BTreeMap::new();
 
-        for entry in &episode.sequences {
-            let child_pack_dir = pack.join(&entry.pack);
-            let seq_output_dir = temporary.join(&entry.pack);
-
-            render_sequence_pack_with_jobs(&child_pack_dir, &seq_output_dir, jobs)?;
-
-            let child_seq = validate_sequence_pack(&child_pack_dir)?;
-            let child_frame_count = sequence_frame_count(&child_seq);
+        for (manifest_seq, child_frame_count, duration, sources) in rendered_items {
             total_frame_count += child_frame_count;
-            rendered_duration_seconds += child_seq.duration_seconds;
-
-            let child_sources = load_sources(&child_pack_dir)?;
-            for s in child_sources.sources {
+            rendered_duration_seconds += duration;
+            for s in sources {
                 all_unique_sources.entry(s.id.clone()).or_insert(s);
             }
-
-            manifest_sequences.push(EpisodeManifestSequence {
-                id: entry.id.clone(),
-                pack: entry.pack.clone(),
-                section: entry.section.clone(),
-                directory: entry.pack.clone(),
-                fps: child_seq.fps,
-                duration_seconds: child_seq.duration_seconds,
-                frame_count: child_frame_count,
-                frame_pattern: "frame-%06d.png".to_string(),
-            });
+            manifest_sequences.push(manifest_seq);
         }
 
         if let Ok(shared_sources) = load_sources(pack.join("_shared")) {
