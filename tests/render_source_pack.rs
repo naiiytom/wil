@@ -263,6 +263,129 @@ fn interpolates_keyframe_with_ease_in_out() {
 }
 
 #[test]
+fn interpolates_keyframe_with_cubic_curves() {
+    // CubicIn: fraction t=0.5 -> 0.5^3 = 0.125
+    assert_eq!(
+        interpolate(
+            &[
+                keyframe_with_easing(0.0, 0.0, Easing::CubicIn),
+                keyframe(2.0, 1.0),
+            ],
+            1.0,
+            1.0
+        ),
+        0.125
+    );
+
+    // CubicOut: fraction t=0.5 -> 1 - (1 - 0.5)^3 = 0.875
+    assert_eq!(
+        interpolate(
+            &[
+                keyframe_with_easing(0.0, 0.0, Easing::CubicOut),
+                keyframe(2.0, 1.0),
+            ],
+            1.0,
+            1.0
+        ),
+        0.875
+    );
+
+    // CubicInOut:
+    // t=0.25 (time 0.5) -> 4 * 0.25^3 = 0.0625
+    assert_eq!(
+        interpolate(
+            &[
+                keyframe_with_easing(0.0, 0.0, Easing::CubicInOut),
+                keyframe(2.0, 1.0),
+            ],
+            0.5,
+            1.0
+        ),
+        0.0625
+    );
+    // t=0.5 (time 1.0) -> 0.5
+    assert_eq!(
+        interpolate(
+            &[
+                keyframe_with_easing(0.0, 0.0, Easing::CubicInOut),
+                keyframe(2.0, 1.0),
+            ],
+            1.0,
+            1.0
+        ),
+        0.5
+    );
+    // t=0.75 (time 1.5) -> 1 - (-2 * 0.75 + 2)^3 / 2 = 1 - 0.0625 = 0.9375
+    assert_eq!(
+        interpolate(
+            &[
+                keyframe_with_easing(0.0, 0.0, Easing::CubicInOut),
+                keyframe(2.0, 1.0),
+            ],
+            1.5,
+            1.0
+        ),
+        0.9375
+    );
+}
+
+#[test]
+fn interpolates_keyframe_endpoints_and_clamping() {
+    let easings = [
+        Easing::Linear,
+        Easing::EaseIn,
+        Easing::EaseOut,
+        Easing::EaseInOut,
+        Easing::CubicIn,
+        Easing::CubicOut,
+        Easing::CubicInOut,
+    ];
+
+    for easing in easings {
+        assert_eq!(easing.apply(0.0), 0.0);
+        assert_eq!(easing.apply(1.0), 1.0);
+        assert_eq!(easing.apply(-0.5), 0.0);
+        assert_eq!(easing.apply(1.5), 1.0);
+
+        let kfs = [keyframe_with_easing(1.0, 10.0, easing), keyframe(3.0, 30.0)];
+        assert_eq!(interpolate(&kfs, 0.0, 0.0), 10.0);
+        assert_eq!(interpolate(&kfs, 1.0, 0.0), 10.0);
+        assert_eq!(interpolate(&kfs, 3.0, 0.0), 30.0);
+        assert_eq!(interpolate(&kfs, 4.0, 0.0), 30.0);
+    }
+}
+
+#[test]
+fn easing_curves_are_strictly_monotonic() {
+    let easings = [
+        Easing::Linear,
+        Easing::EaseIn,
+        Easing::EaseOut,
+        Easing::EaseInOut,
+        Easing::CubicIn,
+        Easing::CubicOut,
+        Easing::CubicInOut,
+    ];
+
+    for easing in easings {
+        let mut prev = 0.0;
+        for step in 0..=100 {
+            let t = step as f64 / 100.0;
+            let val = easing.apply(t);
+            assert!(
+                val >= prev,
+                "easing {:?} violated monotonicity at t={}: prev={}, val={}",
+                easing,
+                t,
+                prev,
+                val
+            );
+            prev = val;
+        }
+    }
+}
+
+#[test]
 fn sequence_pack_parses_and_validates_keyframe_easing() {
     let pack = temporary_sequence_pack(
         r#"animations:
@@ -402,6 +525,55 @@ labels: []
     title: Chao Phraya basin reference
     url: https://example.com/basin
     license: ODbL-1.0
+    retrieved: 2026-09-16
+"#,
+    )
+    .unwrap();
+
+    let output = pack.join("scene.png");
+    render_source_pack(&pack, &output).unwrap();
+    assert!(output.is_file());
+    fs::remove_dir_all(pack).unwrap();
+}
+
+#[test]
+fn renders_dashed_polygon_drop_shadow_with_stroke() {
+    let pack = temporary_pack();
+    let scene_yaml = r##"
+title: Dashed Polygon Drop Shadow
+canvas:
+  width: 320
+  height: 180
+background: "#ffffff"
+layers:
+  - id: outline-dashed-zone
+    kind: polygon
+    fill: "none"
+    stroke: "#0066aa"
+    stroke_width: 6
+    stroke_dasharray: "15 5"
+    lift: 6.0
+    points: [[20, 20], [140, 20], [140, 100], [20, 100]]
+    sources: [basin]
+  - id: filled-dashed-zone
+    kind: polygon
+    fill: "#eeddcc"
+    stroke: "#556677"
+    stroke_width: 8
+    stroke_dasharray: "20 10"
+    lift: 8.0
+    points: [[160, 20], [300, 20], [300, 100], [160, 100]]
+    sources: [basin]
+labels: []
+"##;
+    fs::write(pack.join("scene.yaml"), scene_yaml).unwrap();
+    fs::write(
+        pack.join("sources.yaml"),
+        r#"sources:
+  - id: basin
+    title: Test Basin
+    url: https://example.com/basin
+    license: CC0-1.0
     retrieved: 2026-09-16
 "#,
     )

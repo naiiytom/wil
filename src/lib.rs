@@ -1346,7 +1346,18 @@ fn compose_svg(scene: &FrameScene<'_>) -> String {
         match layer.kind.as_str() {
             "polygon" => {
                 if lift > 0.0 {
-                    svg.push_str(&format!(r##"<polygon points="{}" fill="#514d42" fill-opacity="0.34"{dash_attrs} transform="translate(0 {})"/>"##, points, lift));
+                    let shadow_fill = if fill == "none" { "none" } else { "#514d42" };
+                    let shadow_stroke = if stroke == "none" {
+                        String::new()
+                    } else {
+                        format!(
+                            r##" stroke="#514d42" stroke-opacity="0.34" stroke-width="{stroke_width}"{dash_attrs} stroke-linejoin="round""##
+                        )
+                    };
+                    svg.push_str(&format!(
+                        r##"<polygon points="{}" fill="{shadow_fill}" fill-opacity="0.34"{shadow_stroke} transform="translate(0 {})"/>"##,
+                        points, lift
+                    ));
                 }
                 svg.push_str(&format!(r#"<polygon id="{}" points="{}" fill="{}" stroke="{}" stroke-width="{}"{dash_attrs} stroke-linejoin="round"/>"#, escape(&layer.id), points, fill, stroke, stroke_width));
                 svg.push_str(&format!(
