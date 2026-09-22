@@ -1,0 +1,106 @@
+title: "Rain, River, and Tide: The Three Pressures"
+canvas:
+  width: 3840
+  height: 2160
+bounds: [100.40, 13.45, 100.62, 13.78]
+background: "#e8dfc8"
+fps: 10
+duration_seconds: 4.0
+assume_crs: EPSG:4326
+layers:
+  - id: low-elevation-zone
+    kind: polygon
+    fill: "#c8b46e"
+    stroke: "#a89050"
+    stroke_width: 8
+    lift: 6
+    geojson: ../_shared/data/geometry/low-elevation-zone.geojson
+    sources: [copernicus-dem]
+  - id: flood-pooling
+    kind: polygon
+    fill: "#38bdf8"
+    stroke: "#0284c7"
+    stroke_width: 6
+    lift: 10
+    geojson: ../_shared/data/geometry/low-elevation-zone.geojson
+    sources: [jrc-global-surface-water]
+  - id: canals
+    kind: line
+    stroke: "#64949b"
+    stroke_width: 36
+    lift: 14
+    geojson: ../_shared/data/geometry/canals.geojson
+    sources: [osm-water]
+  - id: coastline
+    kind: line
+    stroke: "#4f8790"
+    stroke_width: 34
+    lift: 16
+    geojson: ../_shared/data/geometry/coastline.geojson
+    sources: [osm-coastline]
+  - id: chao-phraya-river
+    kind: line
+    stroke: "#2d6877"
+    stroke_width: 110
+    lift: 20
+    geojson: ../_shared/data/geometry/chao-phraya.geojson
+    sources: [osm-water]
+  - id: upstream-river-surge
+    kind: line
+    stroke: "#f59e0b"
+    stroke_width: 70
+    lift: 24
+    geojson: ../_shared/data/geometry/chao-phraya.geojson
+    sources: [wmo-urban-flood-guidance]
+  - id: tidal-blockage-barrier
+    kind: line
+    stroke: "#ef4444"
+    stroke_width: 44
+    lift: 26
+    geojson: ../_shared/data/geometry/coastline.geojson
+    sources: [wmo-urban-flood-guidance]
+labels:
+  - text: "1. UPSTREAM RUNOFF SURGE (3,500+ m³/s)"
+    x: 1700
+    y: 200
+    sources: [wmo-urban-flood-guidance]
+  - text: "2. MONSOON RAINFALL OVERLOAD"
+    x: 2300
+    y: 800
+    sources: [wmo-urban-flood-guidance]
+  - text: "3. HIGH GULF TIDE (+2.0m MSL BACK-PRESSURE)"
+    x: 1800
+    y: 1950
+    sources: [wmo-urban-flood-guidance]
+scenes:
+  - id: three-pressures-collision
+    start: 0.0
+    end: 2.0
+  - id: basin-ponding
+    start: 2.0
+    end: 4.0
+animations:
+  - layer: flood-pooling
+    opacity:
+      - at: 0.0
+        value: 0.0
+      - at: 2.0
+        value: 0.3
+      - at: 4.0
+        value: 0.8
+  - layer: upstream-river-surge
+    opacity:
+      - at: 0.0
+        value: 0.2
+      - at: 2.0
+        value: 0.9
+      - at: 4.0
+        value: 1.0
+  - layer: tidal-blockage-barrier
+    opacity:
+      - at: 0.0
+        value: 0.0
+      - at: 2.0
+        value: 0.5
+      - at: 4.0
+        value: 1.0

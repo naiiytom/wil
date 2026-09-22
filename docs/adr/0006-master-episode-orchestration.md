@@ -1,0 +1,3 @@
+# Orchestrate Full Episodes via Declarative Manifests and render-episode
+
+World in Layers will coordinate episodes containing multiple Scene Sequences via an `episode.yaml` manifest and a dedicated `render-episode <pack> <output> [--jobs N]` CLI command. Rather than monolithic project files or external scripts, `episode.yaml` declaratively orders independent Scene Sequence Packs, validates all child Scene Sequence Packs and shared geometries atomically upfront, parallelizes Scene Sequence and frame rendering into structured subdirectories, and outputs an `episode-manifest.yaml` mapping rendered frame ranges to script narrative sections.

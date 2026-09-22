@@ -1,0 +1,3 @@
+# Organize Episode Scene Sequences into Multi-Pack Trees with Shared Geometry
+
+Episodes containing multiple Scene Sequences will be organized under `packs/<episode-id>/` with an `_shared/` directory for common geographic datasets and independent child Scene Sequence directories (`01-<slug>/`, `02-<slug>/`). Scene Sequences reference shared geometries using standard filesystem relative paths (`"../_shared/data/geometry/..."`), requiring zero engine schema modifications. Each Scene Sequence Pack retains its own local `sources.yaml` to ensure self-contained validation and isolated Attribution Card generation, while existing standalone test packs remain untouched.

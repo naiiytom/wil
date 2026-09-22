@@ -1,14 +1,15 @@
 use std::{
     fs,
     io::BufReader,
-    path::PathBuf,
+    path::{Path, PathBuf},
     process::Command,
     time::{SystemTime, UNIX_EPOCH},
 };
 
 use world_in_layers::{
-    NumberKeyframe, interpolate, render_sequence_frame, render_sequence_pack, render_source_pack,
-    validate_sequence_pack,
+    EpisodeManifest, NumberKeyframe, interpolate, render_episode_pack, render_sequence_frame,
+    render_sequence_pack, render_sequence_pack_with_jobs, render_source_pack,
+    validate_episode_pack, validate_sequence_pack,
 };
 
 fn temporary_pack() -> PathBuf {
@@ -23,7 +24,7 @@ fn temporary_pack() -> PathBuf {
     path
 }
 
-fn write_source_pack(path: &PathBuf, layer_sources: &str) {
+fn write_source_pack(path: &Path, layer_sources: &str) {
     fs::write(
         path.join("scene.yaml"),
         format!(
@@ -398,7 +399,9 @@ fn rasterizes_scene_labels() {
     let info = reader.next_frame(&mut pixels).unwrap();
     assert!(
         pixels[..info.buffer_size()]
-            .chunks_exact(4)
+            .as_chunks::<4>()
+            .0
+            .iter()
             .any(|pixel| pixel[0] < 50 && pixel[1] < 50 && pixel[2] < 50)
     );
     fs::remove_dir_all(pack).unwrap();
@@ -569,3 +572,227 @@ fn cli_renders_a_sequence_to_the_requested_directory() {
 fn bangkok_sequence_pack_validates() {
     validate_sequence_pack("packs/bangkok-flat-delta").unwrap();
 }
+
+#[test]
+fn ep01_bangkok_episode_pack_validates() {
+    let episode = validate_episode_pack("packs/ep01-bangkok").unwrap();
+    assert_eq!(episode.episode_id, "ep01-bangkok");
+    assert_eq!(episode.sequences.len(), 5);
+}
+
+#[test]
+fn parallel_sequence_render_obeys_jobs_parameter_and_matches_output() {
+    let pack = temporary_animated_pack();
+    let sequential_output = pack.join("sequential_frames");
+    let parallel_output = pack.join("parallel_frames");
+
+    render_sequence_pack_with_jobs(&pack, &sequential_output, Some(1)).unwrap();
+    render_sequence_pack_with_jobs(&pack, &parallel_output, Some(4)).unwrap();
+
+    let seq_manifest = fs::read_to_string(sequential_output.join("render-manifest.yaml")).unwrap();
+    let par_manifest = fs::read_to_string(parallel_output.join("render-manifest.yaml")).unwrap();
+    assert_eq!(seq_manifest, par_manifest);
+
+    let seq_frame0 = fs::read(sequential_output.join("frame-000000.png")).unwrap();
+    let par_frame0 = fs::read(parallel_output.join("frame-000000.png")).unwrap();
+    assert_eq!(seq_frame0, par_frame0);
+
+    fs::remove_dir_all(pack).unwrap();
+}
+
+#[test]
+fn cli_renders_a_sequence_with_jobs_flag() {
+    let pack = temporary_animated_pack();
+    let output = pack.join("frames");
+    let status = Command::new(env!("CARGO_BIN_EXE_world-in-layers"))
+        .args([
+            "render-sequence",
+            pack.to_str().unwrap(),
+            output.to_str().unwrap(),
+            "--jobs",
+            "2",
+        ])
+        .status()
+        .unwrap();
+    assert!(status.success());
+    assert!(output.join("render-manifest.yaml").is_file());
+    fs::remove_dir_all(pack).unwrap();
+}
+
+fn temporary_episode_pack() -> PathBuf {
+    let episode_dir = temporary_pack();
+    let seq1_dir = episode_dir.join("01-seq");
+    let seq2_dir = episode_dir.join("02-seq");
+    fs::create_dir_all(&seq1_dir).unwrap();
+    fs::create_dir_all(&seq2_dir).unwrap();
+
+    fs::write(
+        episode_dir.join("episode.yaml"),
+        r#"
+title: "Why Bangkok Keeps Flooding"
+episode_id: "ep01-bangkok"
+target_runtime_seconds: 4.0
+sequences:
+  - id: seq1
+    pack: 01-seq
+    section: "0:00-0:02 Section 1"
+  - id: seq2
+    pack: 02-seq
+    section: "0:02-0:04 Section 2"
+"#,
+    )
+    .unwrap();
+
+    let seq_content = r##"
+title: Sequence
+canvas:
+  width: 320
+  height: 180
+bounds: [100.0, 13.0, 101.0, 14.0]
+background: "#edf0e7"
+fps: 2
+duration_seconds: 1.0
+layers:
+  - id: terrain
+    kind: polygon
+    fill: "#cbbf92"
+    points: [[0, 180], [0, 0], [320, 0], [320, 180]]
+    sources: [basin]
+labels: []
+scenes:
+  - id: intro
+    start: 0.0
+    end: 1.0
+"##;
+
+    let sources_content = r#"
+sources:
+  - id: basin
+    title: Chao Phraya basin reference
+    url: https://example.com/basin
+    license: ODbL-1.0
+    retrieved: 2026-09-16
+"#;
+
+    fs::write(seq1_dir.join("sequence.yaml"), seq_content).unwrap();
+    fs::write(seq1_dir.join("sources.yaml"), sources_content).unwrap();
+    fs::write(seq2_dir.join("sequence.yaml"), seq_content).unwrap();
+    fs::write(seq2_dir.join("sources.yaml"), sources_content).unwrap();
+
+    episode_dir
+}
+
+#[test]
+fn validates_episode_pack_and_shared_geometries() {
+    let pack = temporary_episode_pack();
+    let episode = validate_episode_pack(&pack).unwrap();
+    assert_eq!(episode.title, "Why Bangkok Keeps Flooding");
+    assert_eq!(episode.sequences.len(), 2);
+    fs::remove_dir_all(pack).unwrap();
+}
+
+#[test]
+fn rejects_conflicting_source_metadata_across_episode_packs() {
+    let pack = temporary_episode_pack();
+    let conflict_sources = r#"
+sources:
+  - id: basin
+    title: Conflicting Basin Title
+    url: https://example.com/basin
+    license: ODbL-1.0
+    retrieved: 2026-09-16
+"#;
+    fs::write(pack.join("02-seq/sources.yaml"), conflict_sources).unwrap();
+
+    let error = validate_episode_pack(&pack).unwrap_err();
+    assert!(error.to_string().contains("conflicting source definition"));
+    fs::remove_dir_all(pack).unwrap();
+}
+
+#[test]
+fn render_episode_pack_emits_structured_subdirectories_and_manifest() {
+    let pack = temporary_episode_pack();
+    let output = pack.join("rendered_episode");
+
+    render_episode_pack(&pack, &output, Some(2)).unwrap();
+
+    assert!(output.join("01-seq/frame-000000.png").is_file());
+    assert!(output.join("01-seq/frame-000001.png").is_file());
+    assert!(output.join("02-seq/frame-000000.png").is_file());
+    assert!(output.join("02-seq/frame-000001.png").is_file());
+    assert!(output.join("episode-manifest.yaml").is_file());
+
+    let manifest_str = fs::read_to_string(output.join("episode-manifest.yaml")).unwrap();
+    let manifest: EpisodeManifest = yaml_serde::from_str(&manifest_str).unwrap();
+
+    assert_eq!(manifest.title, "Why Bangkok Keeps Flooding");
+    assert_eq!(manifest.episode_id, "ep01-bangkok");
+    assert_eq!(manifest.total_frame_count, 4);
+    assert_eq!(manifest.rendered_duration_seconds, 2.0);
+    assert_eq!(manifest.sequences.len(), 2);
+    assert_eq!(manifest.sequences[0].directory, "01-seq");
+    assert_eq!(manifest.sequences[1].directory, "02-seq");
+    assert_eq!(manifest.attribution_card, "Geographic features are source-backed; timing is illustrative.");
+
+    fs::remove_dir_all(pack).unwrap();
+}
+
+#[test]
+fn episode_render_rolls_back_atomically_on_error() {
+    let pack = temporary_episode_pack();
+    let output = pack.join("rendered_episode");
+
+    // Corrupt sequence 2 so render fails
+    fs::write(pack.join("02-seq/sequence.yaml"), "invalid: yaml: content:").unwrap();
+
+    let result = render_episode_pack(&pack, &output, Some(2));
+    assert!(result.is_err());
+    assert!(!output.exists());
+
+    fs::remove_dir_all(pack).unwrap();
+}
+
+#[test]
+fn cli_renders_an_episode() {
+    let pack = temporary_episode_pack();
+    let output = pack.join("rendered_episode");
+
+    let status = Command::new(env!("CARGO_BIN_EXE_world-in-layers"))
+        .args([
+            "render-episode",
+            pack.to_str().unwrap(),
+            output.to_str().unwrap(),
+            "--jobs",
+            "2",
+        ])
+        .status()
+        .unwrap();
+
+    assert!(status.success());
+    assert!(output.join("episode-manifest.yaml").is_file());
+    assert!(output.join("01-seq/render-manifest.yaml").is_file());
+    assert!(output.join("02-seq/render-manifest.yaml").is_file());
+
+    fs::remove_dir_all(pack).unwrap();
+}
+
+#[test]
+fn parallel_episode_render_matches_sequential_output() {
+    let pack = temporary_episode_pack();
+    let sequential_output = pack.join("sequential_episode");
+    let parallel_output = pack.join("parallel_episode");
+
+    render_episode_pack(&pack, &sequential_output, Some(1)).unwrap();
+    render_episode_pack(&pack, &parallel_output, Some(4)).unwrap();
+
+    let seq_manifest = fs::read_to_string(sequential_output.join("episode-manifest.yaml")).unwrap();
+    let par_manifest = fs::read_to_string(parallel_output.join("episode-manifest.yaml")).unwrap();
+    assert_eq!(seq_manifest, par_manifest);
+
+    let seq_frame = fs::read(sequential_output.join("01-seq/frame-000000.png")).unwrap();
+    let par_frame = fs::read(parallel_output.join("01-seq/frame-000000.png")).unwrap();
+    assert_eq!(seq_frame, par_frame);
+
+    fs::remove_dir_all(pack).unwrap();
+}
+

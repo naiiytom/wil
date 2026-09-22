@@ -1,0 +1,104 @@
+sources:
+  - id: copernicus-dem
+    title: Copernicus DEM GLO-30 Digital Elevation Model
+    url: https://spacedata.copernicus.eu/collections/copernicus-digital-elevation-model
+    license: Copernicus Programme data policy (free, full, open access including commercial)
+    retrieved: "2026-09-18"
+    category: "Geographic & Elevation Baselines"
+    assume_crs: EPSG:4326
+
+  - id: osm-water
+    title: OpenStreetMap waterway and coastline data
+    url: https://www.openstreetmap.org/copyright
+    license: ODbL-1.0 (© OpenStreetMap contributors)
+    retrieved: "2026-09-16"
+    category: "Geographic & Elevation Baselines"
+    assume_crs: EPSG:4326
+
+  - id: osm-bangkok-boundary
+    title: OpenStreetMap Bangkok Metropolitan Administration boundary via Nominatim
+    url: https://nominatim.openstreetmap.org/
+    license: ODbL-1.0 (© OpenStreetMap contributors)
+    retrieved: "2026-09-16"
+    category: "Geographic & Elevation Baselines"
+    assume_crs: EPSG:4326
+
+  - id: osm-coastline
+    title: OpenStreetMap Gulf of Thailand coastline data
+    url: https://www.openstreetmap.org/copyright
+    license: ODbL-1.0 (commercial use permitted with attribution and share-alike)
+    retrieved: "2026-09-17"
+    category: "Geographic & Elevation Baselines"
+    assume_crs: EPSG:4326
+
+  - id: srtm-elevation
+    title: NASA Shuttle Radar Topography Mission elevation data
+    url: https://www.earthdata.nasa.gov/centers/lp-daac
+    license: U.S. Government work (public domain)
+    retrieved: "2026-09-16"
+    category: "Geographic & Elevation Baselines"
+    assume_crs: EPSG:4326
+
+  - id: jrc-global-surface-water
+    title: JRC Global Surface Water Mapping Layers, v1.4
+    url: https://global-surface-water.appspot.com/download
+    license: Copernicus Programme data policy (free, full and open access, including commercial use)
+    retrieved: "2026-09-17"
+    category: "Geographic & Elevation Baselines"
+    assume_crs: EPSG:4326
+
+  - id: rtsd-bangkok-1896
+    title: Thai Map of Bangkok (Phaenthi Krung Thep 1896) Royal Thai Survey Department
+    url: https://commons.wikimedia.org/wiki/File:Thai_Map_of_Bangkok_Phaenthi_Krung_Thep_1896.jpg
+    license: Public Domain (PD-old-70 / PDM 1.0)
+    retrieved: "2026-09-18"
+    category: "Historical & Morphological Surveys"
+    assume_crs: EPSG:4326
+
+  - id: bradley-bangkok-1870
+    title: City Map of Bangkok (1870) by Dr. Dan Beach Bradley
+    url: https://commons.wikimedia.org/wiki/File:Map_of_Bangkok_1870_Bradley.png
+    license: Public Domain (PD-old-100 / PDM 1.0)
+    retrieved: "2026-09-18"
+    category: "Historical & Morphological Surveys"
+    assume_crs: EPSG:4326
+
+  - id: jrc-ghsl-builts
+    title: Global Human Settlement Layer GHS-BUILT-S R2023A
+    url: https://ghsl.jrc.ec.europa.eu/ghs_buS2023.php
+    license: CC BY 4.0 (commercial use permitted with attribution)
+    retrieved: "2026-09-18"
+    category: "Historical & Morphological Surveys"
+    assume_crs: EPSG:4326
+
+  - id: bma-drainage-system
+    title: BMA Department of Drainage and Sewerage (DDS) Canal & Pump Network GIS
+    url: https://dds.bangkok.go.th/
+    license: Open Government Data of Thailand (commercial use permitted)
+    retrieved: "2026-09-18"
+    category: "Hydrological & Infrastructure Records"
+    assume_crs: EPSG:4326
+
+  - id: chula-subsidence-study-2020
+    title: Land Subsidence and Flood Inundation in Bangkok and its Vicinity
+    url: https://chulalongkorn.digital.repository/bangkok-subsidence
+    license: CC-BY-4.0
+    retrieved: "2026-09-19"
+    category: "Hydrological & Infrastructure Records"
+    assume_crs: EPSG:4326
+
+  - id: jica-bangkok-groundwater-1999
+    title: The Study on Management of Groundwater and Land Subsidence in the Bangkok Metropolitan Area
+    url: https://openjicareport.jica.go.jp/pdf/11547486.pdf
+    license: Open Public Domain (Government/JICA report)
+    retrieved: "2026-09-19"
+    category: "Hydrological & Infrastructure Records"
+    assume_crs: EPSG:4326
+
+  - id: wmo-urban-flood-guidance
+    title: WMO Integrated Flood Management tools
+    url: https://www.floodmanagement.info/
+    license: CC BY 3.0 IGO (commercial use permitted with attribution)
+    retrieved: "2026-09-17"
+    category: "Hydrological & Infrastructure Records"
+    assume_crs: EPSG:4326

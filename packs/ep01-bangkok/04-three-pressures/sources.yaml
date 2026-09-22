@@ -1,0 +1,40 @@
+sources:
+  - id: copernicus-dem
+    title: Copernicus DEM GLO-30 Digital Elevation Model
+    url: https://spacedata.copernicus.eu/collections/copernicus-digital-elevation-model
+    license: Copernicus Programme data policy (free, full, open access including commercial)
+    retrieved: "2026-09-18"
+    category: "Geographic & Elevation Baselines"
+    assume_crs: EPSG:4326
+
+  - id: osm-water
+    title: OpenStreetMap waterway and coastline data
+    url: https://www.openstreetmap.org/copyright
+    license: ODbL-1.0 (© OpenStreetMap contributors)
+    retrieved: "2026-09-16"
+    category: "Geographic & Elevation Baselines"
+    assume_crs: EPSG:4326
+
+  - id: osm-coastline
+    title: OpenStreetMap Gulf of Thailand coastline data
+    url: https://www.openstreetmap.org/copyright
+    license: ODbL-1.0 (commercial use permitted with attribution and share-alike)
+    retrieved: "2026-09-17"
+    category: "Geographic & Elevation Baselines"
+    assume_crs: EPSG:4326
+
+  - id: jrc-global-surface-water
+    title: JRC Global Surface Water Mapping Layers, v1.4
+    url: https://global-surface-water.appspot.com/download
+    license: Copernicus Programme data policy (free, full and open access, including commercial use)
+    retrieved: "2026-09-17"
+    category: "Geographic & Elevation Baselines"
+    assume_crs: EPSG:4326
+
+  - id: wmo-urban-flood-guidance
+    title: WMO Integrated Flood Management tools
+    url: https://www.floodmanagement.info/
+    license: CC BY 3.0 IGO (commercial use permitted with attribution)
+    retrieved: "2026-09-17"
+    category: "Hydrological & Infrastructure Records"
+    assume_crs: EPSG:4326

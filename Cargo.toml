@@ -7,6 +7,7 @@ edition = "2024"
 resvg = "0.48"
 serde = { version = "1", features = ["derive"] }
 yaml_serde = "0.10"
+rayon = "1.10"
 
 [dev-dependencies]
 png = "0.18"

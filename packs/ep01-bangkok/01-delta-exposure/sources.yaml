@@ -1,0 +1,40 @@
+sources:
+  - id: copernicus-dem
+    title: Copernicus DEM GLO-30 Digital Elevation Model
+    url: https://spacedata.copernicus.eu/collections/copernicus-digital-elevation-model
+    license: Copernicus Programme data policy (free, full, open access including commercial)
+    retrieved: "2026-09-18"
+    category: "Geographic & Elevation Baselines"
+    assume_crs: EPSG:4326
+
+  - id: srtm-elevation
+    title: NASA Shuttle Radar Topography Mission elevation data
+    url: https://www.earthdata.nasa.gov/centers/lp-daac
+    license: U.S. Government work (public domain)
+    retrieved: "2026-09-16"
+    category: "Geographic & Elevation Baselines"
+    assume_crs: EPSG:4326
+
+  - id: osm-bangkok-boundary
+    title: OpenStreetMap Bangkok Metropolitan Administration boundary via Nominatim
+    url: https://nominatim.openstreetmap.org/
+    license: ODbL-1.0 (© OpenStreetMap contributors)
+    retrieved: "2026-09-16"
+    category: "Geographic & Elevation Baselines"
+    assume_crs: EPSG:4326
+
+  - id: osm-coastline
+    title: OpenStreetMap Gulf of Thailand coastline data
+    url: https://www.openstreetmap.org/copyright
+    license: ODbL-1.0 (commercial use permitted with attribution and share-alike)
+    retrieved: "2026-09-17"
+    category: "Geographic & Elevation Baselines"
+    assume_crs: EPSG:4326
+
+  - id: osm-water
+    title: OpenStreetMap waterway and coastline data
+    url: https://www.openstreetmap.org/copyright
+    license: ODbL-1.0 (© OpenStreetMap contributors)
+    retrieved: "2026-09-16"
+    category: "Geographic & Elevation Baselines"
+    assume_crs: EPSG:4326

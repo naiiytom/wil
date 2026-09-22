@@ -1,0 +1,133 @@
+title: Bangkok Subterranean Subsidence Cutaway Prototype
+canvas:
+  width: 3840
+  height: 2160
+bounds: [100.0, 13.0, 101.0, 14.0]
+background: "#181a1f"
+fps: 10
+duration_seconds: 8.0
+layers:
+  - id: sand-aquifer-layer
+    kind: polygon
+    fill: "#334155"
+    stroke: "#1e293b"
+    stroke_width: 8
+    lift: 4
+    points: [[200, 1500], [3640, 1500], [3640, 2080], [200, 2080]]
+    sources: [jica-bangkok-groundwater-1999]
+  - id: stiff-clay-layer
+    kind: polygon
+    fill: "#475569"
+    stroke: "#334155"
+    stroke_width: 8
+    lift: 8
+    points: [[200, 1050], [3640, 1050], [3640, 1500], [200, 1500]]
+    sources: [jica-bangkok-groundwater-1999]
+  - id: soft-clay-layer
+    kind: polygon
+    fill: "#78716c"
+    stroke: "#57534e"
+    stroke_width: 8
+    lift: 12
+    points: [[200, 680], [3640, 680], [3640, 1050], [200, 1050]]
+    sources: [chula-subsidence-study-2020]
+  - id: surface-ground-layer
+    kind: polygon
+    fill: "#a8a29e"
+    stroke: "#78716c"
+    stroke_width: 6
+    lift: 14
+    points: [[200, 640], [3640, 640], [3640, 680], [200, 680]]
+    sources: [chula-subsidence-study-2020]
+  - id: river-high-tide
+    kind: polygon
+    fill: "#2563eb"
+    stroke: "#1d4ed8"
+    stroke_width: 6
+    lift: 16
+    points: [[200, 520], [800, 520], [800, 680], [200, 680]]
+    sources: [chula-subsidence-study-2020]
+  - id: historical-datum-line
+    kind: line
+    stroke: "#ef4444"
+    stroke_width: 8
+    lift: 18
+    points: [[200, 640], [3640, 640]]
+    sources: [chula-subsidence-study-2020]
+  - id: skyscraper-deep-piles
+    kind: line
+    stroke: "#cbd5e1"
+    stroke_width: 24
+    lift: 20
+    points: [[1260, 640], [1260, 1600], [1440, 1600], [1440, 640]]
+    sources: [jica-bangkok-groundwater-1999]
+  - id: skyscraper-building
+    kind: polygon
+    fill: "#f8fafc"
+    stroke: "#94a3b8"
+    stroke_width: 8
+    lift: 24
+    points: [[1200, 200], [1500, 200], [1500, 640], [1200, 640]]
+    sources: [jica-bangkok-groundwater-1999]
+  - id: settling-building
+    kind: polygon
+    fill: "#e2e8f0"
+    stroke: "#94a3b8"
+    stroke_width: 6
+    lift: 22
+    points: [[2200, 460], [2600, 460], [2600, 640], [2200, 640]]
+    sources: [chula-subsidence-study-2020]
+  - id: deep-extraction-well
+    kind: line
+    stroke: "#f59e0b"
+    stroke_width: 14
+    lift: 18
+    points: [[3000, 500], [3000, 1800]]
+    sources: [jica-bangkok-groundwater-1999]
+labels:
+  - text: CHAO PHRAYA HIGH TIDE LEVEL
+    x: 240
+    y: 480
+    sources: [chula-subsidence-study-2020]
+  - text: HISTORICAL GROUND LEVEL (1960 DATUM)
+    x: 1700
+    y: 610
+    sources: [chula-subsidence-study-2020]
+  - text: COMPRESSIBLE SOFT BANGKOK CLAY (15-30m)
+    x: 1600
+    y: 860
+    sources: [chula-subsidence-study-2020]
+  - text: STIFF CLAY STRATUM
+    x: 1600
+    y: 1280
+    sources: [jica-bangkok-groundwater-1999]
+  - text: DEEP SAND AQUIFER (GROUNDWATER PUMPING)
+    x: 1400
+    y: 1800
+    sources: [jica-bangkok-groundwater-1999]
+  - text: DEEP PILES ANCHORED IN STIFF STRATA
+    x: 1040
+    y: 160
+    sources: [jica-bangkok-groundwater-1999]
+  - text: SHALLOW FOUNDATION SINKS WITH COMPACTING CLAY
+    x: 2100
+    y: 420
+    sources: [chula-subsidence-study-2020]
+scenes:
+  - id: groundwater-extraction
+    start: 0.0
+    end: 4.0
+  - id: clay-compaction-subsidence
+    start: 4.0
+    end: 8.0
+animations:
+  - layer: soft-clay-layer
+    translate:
+      y: [{at: 0.0, value: 0.0}, {at: 4.0, value: 0.0}, {at: 8.0, value: 140.0}]
+  - layer: surface-ground-layer
+    translate:
+      y: [{at: 0.0, value: 0.0}, {at: 4.0, value: 0.0}, {at: 8.0, value: 140.0}]
+  - layer: settling-building
+    translate:
+      y: [{at: 0.0, value: 0.0}, {at: 4.0, value: 0.0}, {at: 8.0, value: 140.0}]
+assume_crs: EPSG:4326
