@@ -35,7 +35,7 @@ labels:
     sources: [basin]
 ```
 
-Layers support `id`, `kind`, `fill`, `stroke`, `stroke_width`, `lift`, `points`, optional `geojson`, and `sources`; labels support `text`, `x`, `y`, and `sources`.
+Layers support `id`, `kind`, `fill`, `stroke`, `stroke_width`, `lift`, optional `stroke_dasharray`, optional `stroke_dashoffset`, `points`, optional `geojson`, and `sources`; labels support `text`, `x`, `y`, and `sources`.
 
 GeoJSON is the current local geographic-input format. For a static layer, set `geojson: data/geometry/river.geojson` and provide `bounds`; `LineString` and `Polygon`, either directly or in one `Feature`, are projected from longitude/latitude into the canvas. Keep downloaded raw data in `data/raw/` and normalized, auditable WGS 84 GeoJSON in `data/geometry/`.
 
@@ -57,6 +57,14 @@ layers:
     fill: "#cbbf92"
     points: [[0, 2160], [0, 0], [3840, 0], [3840, 2160]]
     sources: [basin]
+  - id: river-flow
+    kind: line
+    stroke: "#4a777a"
+    stroke_width: 8
+    stroke_dasharray: "24 12"
+    stroke_dashoffset: 0.0
+    geojson: data/geometry/river.geojson
+    sources: [basin]
 labels: []
 scenes:
   - id: rainfall-overload
@@ -64,11 +72,18 @@ scenes:
     end: 4.0
 animations:
   - layer: terrain
-    opacity: [{at: 0.0, value: 0.0}, {at: 4.0, value: 1.0}]
+    opacity:
+      - {at: 0.0, value: 0.0, easing: ease-out}
+      - {at: 4.0, value: 1.0}
     translate:
-      x: [{at: 0.0, value: 0.0}, {at: 4.0, value: 20.0}]
+      x: [{at: 0.0, value: 0.0, easing: ease-in-out}, {at: 4.0, value: 20.0}]
       y: []
     scale: [{at: 0.0, value: 1.0}, {at: 4.0, value: 1.05}]
+    stroke_dashoffset: []
+  - layer: river-flow
+    stroke_dashoffset:
+      - {at: 0.0, value: 0.0, easing: linear}
+      - {at: 4.0, value: -120.0}
 map_transition:
   translate:
     x: []
@@ -79,7 +94,7 @@ label_animations:
     opacity: [{at: 8.0, value: 0.0}, {at: 10.5, value: 0.0}, {at: 11.5, value: 1.0}, {at: 12.0, value: 1.0}]
 ```
 
-The full `sequence.yaml` key set is `title`, `canvas`, `bounds`, `background`, `fps`, `duration_seconds`, `layers`, `labels`, `scenes`, optional `animations`, optional `label_animations`, optional `map_transition`, and optional `assume_crs`. Each keyframe is `{at: seconds, value: number}`. Keyframes are finite, strictly increasing, and within the duration. Scenes have unique IDs and contiguous `[start, end)` ranges spanning zero through `duration_seconds`; layer IDs and animation targets are unique. `fps` and duration are positive and their product is a whole frame count. Every layer and label has known source IDs. Optional `scene` on labels scopes visibility to a single Scene, and `label_animations` interpolates label opacity across timestamps.
+The full `sequence.yaml` key set is `title`, `canvas`, `bounds`, `background`, `fps`, `duration_seconds`, `layers`, `labels`, `scenes`, optional `animations`, optional `label_animations`, optional `map_transition`, and optional `assume_crs`. Each keyframe is `{at: seconds, value: number, easing?: string}` where `easing` is one of `linear` (default), `ease-in`, `ease-out`, `ease-in-out`, `cubic-in`, `cubic-out`, or `cubic-in-out`. Keyframes are finite, strictly increasing, and within the duration. Scenes have unique IDs and contiguous `[start, end)` ranges spanning zero through `duration_seconds`; layer IDs and animation targets are unique. `fps` and duration are positive and their product is a whole frame count. Every layer and label has known source IDs. Optional `scene` on labels scopes visibility to a single Scene, and `label_animations` interpolates label opacity across timestamps. Animatable `stroke_dashoffset` keyframes produce directional flow along lines (e.g. rivers, canals, tidal pushes).
 
 `assume_crs: EPSG:4326` explicitly declares WGS 84 only when source data has no CRS metadata. Use the documented source CRS whenever it is available; `assume_crs` values must begin with `EPSG:`. The same optional key may be attached to a source entry in `sources.yaml`.
 
